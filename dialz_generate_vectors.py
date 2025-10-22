@@ -101,6 +101,7 @@ def main():
     parser.add_argument("--model", default="google/gemma-2-9b")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--train_limit", type=int, default=128)
+    parser.add_argument("--layers", nargs="+", type=int, default=None, help="Override layers to generate vectors for (e.g., 20 21)")
     args = parser.parse_args()
 
     train_limit = None if args.train_limit == 0 else args.train_limit
@@ -112,7 +113,7 @@ def main():
     if args.method == "sta":
         ensure_sta_sae_available(generate_hparam_path)
 
-    top_generate_cfg = OmegaConf.create({
+    cfg_dict = {
         "model_name_or_path": args.model,
         "torch_dtype": "bfloat16",
         "device": args.device,
@@ -123,7 +124,10 @@ def main():
         "steer_train_dataset": [args.dataset],
         "save_vectors": True,
         "steer_vector_output_dirs": [f"vectors/dialz/gemma-2-9b"],
-    })
+    }
+    if args.layers is not None:
+        cfg_dict["layers"] = args.layers
+    top_generate_cfg = OmegaConf.create(cfg_dict)
 
     vector_generator = BaseVectorGenerator(top_generate_cfg)
     vectors = vector_generator.generate_vectors({args.dataset: train_items})

@@ -19,6 +19,27 @@ def load_test_prompts(path: str) -> List[Dict]:
     return [{"input": x.get("input", "")} for x in obj]
 
 
+def discover_vector_layers(vector_dir: str, method: str) -> List[int]:
+    layers: List[int] = []
+    if not os.path.exists(vector_dir):
+        return layers
+    for name in os.listdir(vector_dir):
+        if method == "caa" and name.startswith("layer_") and name.endswith(".pt"):
+            try:
+                layers.append(int(name.split("_")[1].split(".")[0]))
+            except Exception:
+                pass
+        elif method == "sta" and name.startswith("layer_") and name.endswith(".pt"):
+            # sta filenames include mode/trim; we cannot infer here reliably
+            # we still capture the base layer number if present
+            try:
+                base = name.split("_")[1]
+                layers.append(int(base))
+            except Exception:
+                pass
+    return sorted(list(set(layers)))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Apply steering vectors with multiple multipliers and generate outputs.")
     parser.add_argument("--method", choices=["caa", "sta"], required=True)
@@ -27,6 +48,7 @@ def main():
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--multipliers", nargs="+", type=float, required=True, help="List of multipliers, e.g., 0.5 1.0 2.0")
     parser.add_argument("--test_prompts", required=True, help="JSON file with test prompts (list[str] or list[{input: str}])")
+    parser.add_argument("--layers", nargs="+", type=int, default=None, help="Layers to apply (default: infer from vector files)")
     parser.add_argument("--max_new_tokens", type=int, default=100)
     parser.add_argument("--temperature", type=float, default=0.9)
     args = parser.parse_args()
@@ -43,8 +65,11 @@ def main():
         "generation", "dialz", "gemma-2-9b", args.dataset, args.method
     )
 
+    # Determine layers to apply: CLI override or infer from vector files
+    layers_to_apply: List[int] = args.layers if args.layers is not None else discover_vector_layers(vector_dir, args.method)
+
     for mult in args.multipliers:
-        top_cfg = OmegaConf.create({
+        cfg_dict = {
             "model_name_or_path": args.model,
             "torch_dtype": "bfloat16",
             "device": args.device,
@@ -53,6 +78,9 @@ def main():
             "system_prompt": "",
             "apply_steer_hparam_paths": [apply_hparam_path],
             "steer_vector_load_dir": [vector_dir],
+            # Ensure multiplier and layers override YAML defaults inside hparams
+            "multipliers": [mult],
+            "layers": layers_to_apply if layers_to_apply else None,
             "generation_data": ["dialz_test"],
             "generation_data_size": None,
             "generation_output_dir": os.path.join(base_output_dir, f"mult_{mult}"),
@@ -65,15 +93,17 @@ def main():
                 "temperature": args.temperature,
             },
             "vllm_enable": False,
-        })
+        }
+        # Remove None to avoid confusing downstream loaders
+        cfg_dict = {k: v for k, v in cfg_dict.items() if v is not None}
+        top_cfg = OmegaConf.create(cfg_dict)
 
-        # Override multipliers dynamically by patching hparams for the method
-        # BaseVectorApplier reads apply hparams and then loads vectors
         applier = BaseVectorApplier(top_cfg)
-        # Patch the multiplier on the loaded hparams
+        # Patch multiplier and layers on the loaded hparams
         for k, hp in applier.hparams_dict.items():
+            if layers_to_apply:
+                hp.layers = layers_to_apply
             if hasattr(hp, "multipliers"):
-                # broadcast scalar to match layers length
                 if isinstance(hp.layers, list) and hp.layers:
                     hp.multipliers = [mult for _ in hp.layers]
                 else:
