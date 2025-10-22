@@ -94,11 +94,12 @@ def ensure_sta_sae_available(generate_hparam_path: str, layers: List[int] | None
         for L in target_layers
     ]
 
-    # Check existence; if missing, download only those subfolders
+    # Check existence; if missing (or params.npz missing), download only those subfolders
     missing = []
     for p in target_paths_rel:
         abs_p = os.path.abspath(os.path.join(ROOT_DIR, p))
-        if not os.path.exists(abs_p):
+        params_file = os.path.join(abs_p, "params.npz")
+        if not os.path.exists(params_file):
             missing.append(abs_p)
     if missing:
         try:
@@ -110,7 +111,9 @@ def ensure_sta_sae_available(generate_hparam_path: str, layers: List[int] | None
                 rel = os.path.relpath(p, base_cache_dir).replace("\\", "/")
                 # ensure pattern stays within repo folder
                 if not rel.startswith(".."):  # inside
-                    allow_patterns.append(rel + "/**")
+                    # we need params.npz and cfg.json (and possibly others) under this folder
+                    allow_patterns.append(rel + "/params.npz")
+                    allow_patterns.append(rel + "/cfg.json")
             snapshot_download(
                 repo_id=repo_id,
                 local_dir=base_cache_dir,
