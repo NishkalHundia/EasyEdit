@@ -53,7 +53,10 @@ def load_dialz_dataset(dataset_name: str, limit: int | None = None, seed: int | 
     return normalized
 
 
-def ensure_sta_sae_available(generate_hparam_path: str, layers: List[int] | None, sae_width: str | None) -> List[str]:
+def ensure_sta_sae_available(generate_hparam_path: str,
+                             layers: List[int] | None,
+                             sae_width: str | None,
+                             model_name_or_path: str) -> List[str]:
     """Ensure required STA SAE(s) are available. Returns sae_paths to use.
 
     If sae_width is provided, only download that width for the selected layers and
@@ -66,19 +69,18 @@ def ensure_sta_sae_available(generate_hparam_path: str, layers: List[int] | None
     except Exception:
         sae_paths = []
 
-    if sae_width is None and sae_paths:
-        # Use existing YAML paths
+    # Prefer canonical repo based on Gemma model; ignore YAML if model is Gemma.
+    model_lower = (model_name_or_path or "").lower()
+    is_gemma = "gemma" in model_lower
+    if sae_width is None and sae_paths and not is_gemma:
+        # For non-Gemma models, fallback to YAML
         return sae_paths
 
-    repo_name = None
-    for p in sae_paths:
-        parts = os.path.normpath(p).split(os.sep)
-        if "hugging_cache" in parts:
-            idx = parts.index("hugging_cache")
-            if idx + 1 < len(parts):
-                repo_name = parts[idx + 1]
-                break
-    if repo_name is None:
+    # Choose SAE repo by Gemma size; default to 9b if unknown
+    repo_name = "gemma-scope-9b-it-res"
+    if "2-2b" in model_lower:
+        repo_name = "gemma-scope-2b-it-res"
+    elif "2-9b" in model_lower or "9b" in model_lower:
         repo_name = "gemma-scope-9b-it-res"
 
     base_cache_dir = os.path.join(ROOT_DIR, "hugging_cache", repo_name)
@@ -150,7 +152,7 @@ def main():
     generate_hparam_path = f"hparams/Steer/{args.method}_hparams/generate_{args.method}.yaml"
     sae_paths_override: List[str] | None = None
     if args.method == "sta":
-        sae_paths_override = ensure_sta_sae_available(generate_hparam_path, args.layers, args.sae_width)
+        sae_paths_override = ensure_sta_sae_available(generate_hparam_path, args.layers, args.sae_width, args.model)
 
     cfg_dict = {
         "model_name_or_path": args.model,
