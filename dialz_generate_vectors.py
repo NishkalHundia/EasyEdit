@@ -76,21 +76,34 @@ def ensure_sta_sae_available(generate_hparam_path: str,
         # For non-Gemma models, fallback to YAML
         return sae_paths
 
-    # Choose SAE repo by Gemma size; prefer canonical pretraining (not it-res)
-    if "2-2b" in model_lower:
-        repo_name = "gemma-scope-2b-pt-res-canonical"
-    elif "2-9b" in model_lower or "9b" in model_lower:
-        repo_name = "gemma-scope-9b-pt-res-canonical"
+    # Choose SAE repo by Gemma size
+    # Note: Canonical releases only support 16k width!
+    # For 131k, use non-canonical "gemma-scope-*-pt-res" instead
+    width_str = sae_width or "16k"
+    
+    if width_str == "131k":
+        # Use non-canonical for 131k (average_l0_* folders)
+        if "2-2b" in model_lower:
+            repo_name = "gemma-scope-2b-pt-res"
+        elif "2-9b" in model_lower or "9b" in model_lower:
+            repo_name = "gemma-scope-9b-pt-res"
+        else:
+            repo_name = "gemma-scope-9b-pt-res"
+        # For non-canonical, use average_l0_* subfolders (need to pick one)
+        avg_dir = "average_l0_71"  # Common choice for 131k width
     else:
-        repo_name = "gemma-scope-9b-pt-res-canonical"
+        # Use canonical for 16k
+        if "2-2b" in model_lower:
+            repo_name = "gemma-scope-2b-pt-res-canonical"
+        elif "2-9b" in model_lower or "9b" in model_lower:
+            repo_name = "gemma-scope-9b-pt-res-canonical"
+        else:
+            repo_name = "gemma-scope-9b-pt-res-canonical"
+        avg_dir = "canonical"
 
     base_cache_dir = os.path.join(ROOT_DIR, "hugging_cache", repo_name)
     # Build target sae_paths if a specific width is requested or none existed
     target_layers = layers or [20]
-    width_str = sae_width or "16k"
-    # Canonical average dirs per width (based on project usage)
-    # Canonical release uses 'canonical' leaf folder
-    avg_dir = "canonical"
     target_paths_rel: List[str] = [
         os.path.join("hugging_cache", repo_name, f"layer_{L}", f"width_{width_str}", avg_dir)
         for L in target_layers

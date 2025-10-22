@@ -1,0 +1,1 @@
+apt-get update && git clone https://github.com/NishkalHundia/EasyEdit.git && cd EasyEdit && pip install -r requirements_2.txt && huggingface-cli login

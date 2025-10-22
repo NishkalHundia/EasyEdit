@@ -441,8 +441,9 @@ class BaseModelWrapper:
         return logits
     
     def ori_generate(self, input_ids, **kwargs):
-        # Save activation dictionaries
+        # Save activation dictionaries and from_position
         saved_activations = {}
+        saved_from_positions = {}
         if hasattr(self.model, 'model') and isinstance(self.model.model, Hack_no_grad):
             model_layers = self.model.model.module.layers
         else:
@@ -462,6 +463,10 @@ class BaseModelWrapper:
                 
                 saved_activations[i] = saved_dict
                 layer.add_activations_dict = {}
+            # Also save and clear from_position
+            if hasattr(layer, 'from_position') and layer.from_position is not None:
+                saved_from_positions[i] = layer.from_position
+                layer.from_position = None
         
         # Save steer value if exists
         saved_steer_values = t.zeros(1)
@@ -479,6 +484,10 @@ class BaseModelWrapper:
             # Restore activation dictionaries
             for i, activations_dict in saved_activations.items():
                 model_layers[i].add_activations_dict = activations_dict
+            
+            # Restore from_position
+            for i, from_pos in saved_from_positions.items():
+                model_layers[i].from_position = from_pos
             
             # Restore steer value
             if saved_steer_values is not None and hasattr(self, 'steer'):
@@ -676,8 +685,9 @@ class GPTWrapper(BaseModelWrapper):
             raise ValueError(f"Method {method_name} not supported to reset")
     
     def ori_generate(self, input_ids, **kwargs):
-        # Save activation dictionaries
+        # Save activation dictionaries and from_position
         saved_activations = {}
+        saved_from_positions = {}
         if hasattr(self.model, 'transformer') and isinstance(self.model.transformer, Hack_no_grad):
             model_layers = self.model.transformer.module.h
         else:
@@ -687,6 +697,10 @@ class GPTWrapper(BaseModelWrapper):
             if hasattr(layer, 'add_activations_dict') and layer.add_activations_dict:
                 saved_activations[i] = copy.deepcopy(layer.add_activations_dict)
                 layer.add_activations_dict = {}
+            # Also save and clear from_position
+            if hasattr(layer, 'from_position') and layer.from_position is not None:
+                saved_from_positions[i] = layer.from_position
+                layer.from_position = None
         
         # Save steer value if exists
         saved_steer_value = 0
@@ -704,6 +718,10 @@ class GPTWrapper(BaseModelWrapper):
             # Restore activation dictionaries
             for i, activations_dict in saved_activations.items():
                 model_layers[i].add_activations_dict = activations_dict
+            
+            # Restore from_position
+            for i, from_pos in saved_from_positions.items():
+                model_layers[i].from_position = from_pos
             
             # Restore steer value
             if saved_steer_value is not None and hasattr(self, 'steer'):

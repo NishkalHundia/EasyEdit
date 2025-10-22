@@ -87,12 +87,12 @@ def main():
             "generation_data_size": None,
             "generation_output_dir": os.path.join(base_output_dir, f"mult_{mult}"),
             "num_responses": 1,
-            "steer_from_end_position": False,
+            "steer_from_end_position": True,  # Only steer generated tokens, not prompt
             "generate_orig_output": True,
             "generation_params": {
                 "max_new_tokens": args.max_new_tokens,
-                "do_sample": True,
-                "temperature": args.temperature,
+                "do_sample": False,  # Use greedy decoding to see steering clearly
+                # temperature only applies when do_sample=True
             },
             "vllm_enable": False,
         }

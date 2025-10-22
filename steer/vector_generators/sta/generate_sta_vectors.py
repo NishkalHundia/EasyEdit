@@ -131,15 +131,31 @@ def generate_sta_vectors(hparams:STAHyperParams, dataset, model = None, dataset_
                 if m:
                     width = m.group(1)
                 model_lower = args.model_name_or_path.lower()
-                if "2-2b" in model_lower or "2b" in model_lower:
-                    release = "gemma-scope-2b-pt-res-canonical"
-                elif "2-9b" in model_lower or "9b" in model_lower:
-                    release = "gemma-scope-9b-pt-res-canonical"
+                
+                # Determine release and sae_id based on width
+                # Canonical releases only support 16k; use non-canonical for 131k
+                if width == "131k":
+                    # Use non-canonical for 131k
+                    if "2-2b" in model_lower or "2b" in model_lower:
+                        release = "gemma-scope-2b-pt-res"
+                    elif "2-9b" in model_lower or "9b" in model_lower:
+                        release = "gemma-scope-9b-pt-res"
+                    else:
+                        release = "gemma-scope-9b-pt-res"
+                    sae_id = f"layer_{layer}/width_{width}/average_l0_71"
                 else:
-                    release = "gemma-scope-9b-pt-res-canonical"
+                    # Use canonical for 16k (and other widths)
+                    if "2-2b" in model_lower or "2b" in model_lower:
+                        release = "gemma-scope-2b-pt-res-canonical"
+                    elif "2-9b" in model_lower or "9b" in model_lower:
+                        release = "gemma-scope-9b-pt-res-canonical"
+                    else:
+                        release = "gemma-scope-9b-pt-res-canonical"
+                    sae_id = f"layer_{layer}/width_{width}/canonical"
+                
                 sae, cfg_dict, sparsity = SAE_LENS.from_pretrained(
                     release=release,
-                    sae_id=f"layer_{layer}/width_{width}/canonical",
+                    sae_id=sae_id,
                 )
                 try:
                     sae = sae.to(device)
