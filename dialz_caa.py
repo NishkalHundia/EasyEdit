@@ -64,7 +64,9 @@ def main():
     print(f"Loaded {len(train_data)} training examples")
     
     # Config for vector generation
-    vector_dir = f"vectors/dialz/{args.model.split('/')[-1]}/{args.dataset}/caa_vector"
+    # Note: generator adds /caa_vector automatically, so don't include it here
+    vector_base_dir = f"vectors/dialz/{args.model.split('/')[-1]}/{args.dataset}"
+    vector_dir = f"{vector_base_dir}/caa_vector"
     gen_config = {
         "alg_name": "caa",
         "model_name_or_path": args.model,
@@ -74,7 +76,7 @@ def main():
         "system_prompt": "",
         "layers": args.layers,
         "save_vectors": True,
-        "steer_vector_output_dirs": [vector_dir],  # Plural!
+        "steer_vector_output_dirs": [vector_base_dir],  # Generator adds /caa_vector
         "steer_train_hparam_paths": ["hparams/Steer/caa_hparams/generate_caa.yaml"],
         "steer_train_dataset": [args.dataset],  # Required
     }
