@@ -64,9 +64,9 @@ def main():
     print(f"Loaded {len(train_data)} training examples")
     
     # Config for vector generation
-    # Note: generator adds /caa_vector automatically, so don't include it here
-    vector_base_dir = f"vectors/dialz/{args.model.split('/')[-1]}/{args.dataset}"
-    vector_dir = f"{vector_base_dir}/caa_vector"
+    # Note: generator adds /{dataset_name}/caa_vector automatically
+    vector_base_dir = f"vectors/dialz/{args.model.split('/')[-1]}"
+    vector_dir = f"{vector_base_dir}/{args.dataset}/caa_vector"
     gen_config = {
         "alg_name": "caa",
         "model_name_or_path": args.model,
