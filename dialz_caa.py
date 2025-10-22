@@ -64,6 +64,7 @@ def main():
     print(f"Loaded {len(train_data)} training examples")
     
     # Config for vector generation
+    vector_dir = f"vectors/dialz/{args.model.split('/')[-1]}/{args.dataset}/caa_vector"
     gen_config = {
         "alg_name": "caa",
         "model_name_or_path": args.model,
@@ -73,8 +74,9 @@ def main():
         "system_prompt": "",
         "layers": args.layers,
         "save_vectors": True,
-        "steer_vector_output_dir": f"vectors/dialz/{args.model.split('/')[-1]}/{args.dataset}/caa_vector",
+        "steer_vector_output_dirs": [vector_dir],  # Plural!
         "steer_train_hparam_paths": ["hparams/Steer/caa_hparams/generate_caa.yaml"],
+        "steer_train_dataset": [args.dataset],  # Required
     }
     
     # Generate vectors
@@ -82,7 +84,7 @@ def main():
     gen_cfg = OmegaConf.create(gen_config)
     vector_generator = BaseVectorGenerator(gen_cfg)
     vector_generator.generate_vectors({args.dataset: train_data})
-    print(f"Vectors saved to {gen_config['steer_vector_output_dir']}")
+    print(f"Vectors saved to {vector_dir}")
     
     # Config for applying vectors
     apply_config = {
@@ -93,7 +95,7 @@ def main():
         "use_chat_template": False,
         "system_prompt": "",
         "apply_steer_hparam_paths": ["hparams/Steer/caa_hparams/apply_caa.yaml"],
-        "steer_vector_load_dir": [gen_config["steer_vector_output_dir"]],
+        "steer_vector_load_dir": [vector_dir],
         "generation_data": ["test"],
         "generation_data_size": None,
         "generation_output_dir": f"generation/dialz/{args.model.split('/')[-1]}/{args.dataset}/caa",
