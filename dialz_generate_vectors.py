@@ -51,7 +51,12 @@ def load_dialz_dataset(dataset_name: str, limit: int | None = None) -> List[Dict
     return normalized
 
 
-def ensure_sta_sae_available(generate_hparam_path: str) -> None:
+def ensure_sta_sae_available(generate_hparam_path: str, layers: List[int] | None, sae_width: str | None) -> List[str]:
+    """Ensure required STA SAE(s) are available. Returns sae_paths to use.
+
+    If sae_width is provided, only download that width for the selected layers and
+    construct canonical sae_paths accordingly.
+    """
     try:
         with open(generate_hparam_path, "r", encoding="utf-8") as f:
             gen_cfg = yaml.safe_load(f)
@@ -59,8 +64,9 @@ def ensure_sta_sae_available(generate_hparam_path: str) -> None:
     except Exception:
         sae_paths = []
 
-    if not sae_paths:
-        return
+    if sae_width is None and sae_paths:
+        # Use existing YAML paths
+        return sae_paths
 
     repo_name = None
     for p in sae_paths:
@@ -74,24 +80,49 @@ def ensure_sta_sae_available(generate_hparam_path: str) -> None:
         repo_name = "gemma-scope-9b-it-res"
 
     base_cache_dir = os.path.join(ROOT_DIR, "hugging_cache", repo_name)
-    need_download = False
-    for p in sae_paths:
+    # Build target sae_paths if a specific width is requested or none existed
+    target_layers = layers or [20]
+    width_str = sae_width or "16k"
+    # Canonical average dirs per width (based on project usage)
+    canonical_avg = {
+        "16k": "average_l0_91",
+        "131k": "average_l0_24",
+    }
+    avg_dir = canonical_avg.get(width_str, "average_l0_91")
+    target_paths_rel: List[str] = [
+        os.path.join("..", "hugging_cache", repo_name, f"layer_{L}", f"width_{width_str}", avg_dir)
+        for L in target_layers
+    ]
+
+    # Check existence; if missing, download only those subfolders
+    missing = []
+    for p in target_paths_rel:
         abs_p = p
         if not os.path.isabs(abs_p):
             abs_p = os.path.abspath(os.path.join(os.path.dirname(__file__), p))
         if not os.path.exists(abs_p):
-            need_download = True
-            break
-    if need_download:
+            missing.append(abs_p)
+    if missing:
         try:
             from huggingface_hub import snapshot_download
             repo_id = f"google/{repo_name}"
             os.makedirs(os.path.dirname(base_cache_dir), exist_ok=True)
-            snapshot_download(repo_id=repo_id, local_dir=base_cache_dir, local_dir_use_symlinks=False, allow_patterns=None)
-            print(f"Downloaded canonical SAEs to: {base_cache_dir}")
+            allow_patterns = [
+                os.path.relpath(p, base_cache_dir).replace("\\", "/") + "/**"
+                for p in missing
+            ]
+            snapshot_download(
+                repo_id=repo_id,
+                local_dir=base_cache_dir,
+                local_dir_use_symlinks=False,
+                allow_patterns=allow_patterns,
+            )
+            print(f"Downloaded SAEs: {allow_patterns}")
         except Exception as e:
             print(f"Warning: failed to download canonical SAEs automatically: {e}")
             print("Install huggingface_hub and ensure internet/HF auth if needed, or pre-populate hugging_cache.")
+
+    return target_paths_rel if target_paths_rel else sae_paths
 
 
 def main():
@@ -102,6 +133,7 @@ def main():
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--train_limit", type=int, default=128)
     parser.add_argument("--layers", nargs="+", type=int, default=None, help="Override layers to generate vectors for (e.g., 20 21)")
+    parser.add_argument("--sae_width", default=None, help="STA only: SAE width to use (e.g., 16k or 131k). Downloads only that width.")
     args = parser.parse_args()
 
     train_limit = None if args.train_limit == 0 else args.train_limit
@@ -110,8 +142,9 @@ def main():
         raise RuntimeError(f"No usable items found in dataset {args.dataset}")
 
     generate_hparam_path = f"hparams/Steer/{args.method}_hparams/generate_{args.method}.yaml"
+    sae_paths_override: List[str] | None = None
     if args.method == "sta":
-        ensure_sta_sae_available(generate_hparam_path)
+        sae_paths_override = ensure_sta_sae_available(generate_hparam_path, args.layers, args.sae_width)
 
     cfg_dict = {
         "model_name_or_path": args.model,
@@ -127,6 +160,8 @@ def main():
     }
     if args.layers is not None:
         cfg_dict["layers"] = args.layers
+    if sae_paths_override:
+        cfg_dict["sae_paths"] = sae_paths_override
     top_generate_cfg = OmegaConf.create(cfg_dict)
 
     vector_generator = BaseVectorGenerator(top_generate_cfg)
