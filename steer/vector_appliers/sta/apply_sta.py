@@ -49,9 +49,14 @@ def apply_sta(hparams: ApplySTAHyperParams,pipline=None,vector=None):
                 hparams.steer_vector_load_dir, f"layer_{layer}_{hparams.mode}_trim{trim}.pt"
             )
             steering_vector = torch.load(vector_path, map_location=device)
-            print("Steering vector path: ",vector_path)
-        print("Steering vector: ",steering_vector)
-        print(f"Multiplier {multiplier}")
+            tqdm.write("Steering vector path:  " + str(vector_path))
+        # shorten tensor print
+        try:
+            _base = steering_vector.detach().flatten()[:5].tolist()
+            tqdm.write(f"Steering head (first 5): {[_:.4f for _ in _base]}")
+        except Exception:
+            pass
+        tqdm.write(f"Multiplier {multiplier}")
         try:
             base_norm = float(steering_vector.norm().item())
         except Exception:
@@ -62,7 +67,7 @@ def apply_sta(hparams: ApplySTAHyperParams,pipline=None,vector=None):
         except Exception:
             scaled_norm = None
         if base_norm is not None and scaled_norm is not None:
-            print(f"Vector norms -> base: {base_norm:.6f}, scaled: {scaled_norm:.6f}")
+            tqdm.write(f"Vector norms -> base: {base_norm:.6f}, scaled: {scaled_norm:.6f}")
 
         model.set_add_activations(
             layer, scaled, method_name="sta"

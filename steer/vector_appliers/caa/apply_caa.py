@@ -1,5 +1,6 @@
 import os
 import torch
+from tqdm import tqdm
 from ...vector_generators.lm_steer import Hack_no_grad
 from .apply_caa_hparam import ApplyCAAHyperParams
          
@@ -44,11 +45,12 @@ def apply_caa(hparams: ApplyCAAHyperParams,pipline=None, vector=None):
                 hparams.steer_vector_load_dir, f"layer_{layer}.pt"
             )
             steering_vector = torch.load(vector_path,map_location=device)
-            print("Steering vector path: ",vector_path)
+            tqdm.write("Steering vector path:  " + str(vector_path))
         # print(f"Multiplier {multiplier}")
         scaled = multiplier * steering_vector
+        print("Scaled steering vector: ", scaled)
         try:
-            print(f"Vector norms -> base: {float(steering_vector.norm().item()):.6f}, scaled: {float(scaled.norm().item()):.6f}")
+            tqdm.write(f"Vector norms -> base: {float(steering_vector.norm().item()):.6f}, scaled: {float(scaled.norm().item()):.6f}")
         except Exception:
             pass
         model.set_add_activations(
