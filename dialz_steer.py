@@ -5,6 +5,7 @@ import random
 from typing import Dict, List
 
 from omegaconf import OmegaConf
+import yaml
 
 from steer.vector_generators.vector_generators import BaseVectorGenerator
 from steer.vector_appliers.vector_applier import BaseVectorApplier
@@ -138,6 +139,50 @@ def run(method: str,
 
     # 2) Configure vector generation (Gemma 2 9B, layer 20)
     generate_hparam_path = f"hparams/Steer/{method}_hparams/generate_{method}.yaml"
+
+    # If STA, ensure canonical SAEs are downloaded into hugging_cache if missing
+    if method == "sta":
+        try:
+            with open(generate_hparam_path, "r", encoding="utf-8") as f:
+                gen_cfg = yaml.safe_load(f)
+            sae_paths = gen_cfg.get("sae_paths", []) or []
+        except Exception:
+            sae_paths = []
+
+        # infer repo name from path (e.g., hugging_cache/gemma-scope-9b-it-res/..)
+        repo_name = None
+        for p in sae_paths:
+            parts = os.path.normpath(p).split(os.sep)
+            if "hugging_cache" in parts:
+                idx = parts.index("hugging_cache")
+                if idx + 1 < len(parts):
+                    repo_name = parts[idx + 1]
+                    break
+        if repo_name is None:
+            repo_name = "gemma-scope-9b-it-res"
+
+        base_cache_dir = os.path.join(ROOT_DIR, "hugging_cache", repo_name)
+        # If any sae_path is missing, fetch the full repo snapshot so all layers/widths are present
+        need_download = False
+        for p in sae_paths:
+            # resolve relative paths like ../hugging_cache/... from project root
+            abs_p = p
+            if not os.path.isabs(abs_p):
+                abs_p = os.path.abspath(os.path.join(os.path.dirname(__file__), p))
+            if not os.path.exists(abs_p):
+                need_download = True
+                break
+        if need_download:
+            try:
+                from huggingface_hub import snapshot_download
+                repo_id = f"google/{repo_name}"
+                os.makedirs(os.path.dirname(base_cache_dir), exist_ok=True)
+                # Download/update repo into hugging_cache/repo_name
+                snapshot_download(repo_id=repo_id, local_dir=base_cache_dir, local_dir_use_symlinks=False, allow_patterns=None)
+                print(f"Downloaded canonical SAEs to: {base_cache_dir}")
+            except Exception as e:
+                print(f"Warning: failed to download canonical SAEs automatically: {e}")
+                print("Install huggingface_hub and ensure internet/HF auth if needed, or pre-populate hugging_cache.")
     top_generate_cfg = OmegaConf.create({
         "model_name_or_path": model_name_or_path,
         "torch_dtype": "bfloat16",
