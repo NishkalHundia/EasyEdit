@@ -80,8 +80,10 @@ def main():
             "steer_vector_load_dir": [vector_dir],
             # Ensure multiplier and layers override YAML defaults inside hparams
             "multipliers": [mult],
-            "layers": layers_to_apply if layers_to_apply else None,
+            # Only include layers when explicitly provided or inferred
+            **({"layers": layers_to_apply} if layers_to_apply else {}),
             "generation_data": ["dialz_test"],
+            # Must exist (BaseVectorApplier expects this key even if None)
             "generation_data_size": None,
             "generation_output_dir": os.path.join(base_output_dir, f"mult_{mult}"),
             "num_responses": 1,
@@ -94,8 +96,6 @@ def main():
             },
             "vllm_enable": False,
         }
-        # Remove None to avoid confusing downstream loaders
-        cfg_dict = {k: v for k, v in cfg_dict.items() if v is not None}
         top_cfg = OmegaConf.create(cfg_dict)
 
         applier = BaseVectorApplier(top_cfg)
