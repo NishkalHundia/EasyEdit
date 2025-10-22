@@ -90,16 +90,14 @@ def ensure_sta_sae_available(generate_hparam_path: str, layers: List[int] | None
     }
     avg_dir = canonical_avg.get(width_str, "average_l0_91")
     target_paths_rel: List[str] = [
-        os.path.join("..", "hugging_cache", repo_name, f"layer_{L}", f"width_{width_str}", avg_dir)
+        os.path.join("hugging_cache", repo_name, f"layer_{L}", f"width_{width_str}", avg_dir)
         for L in target_layers
     ]
 
     # Check existence; if missing, download only those subfolders
     missing = []
     for p in target_paths_rel:
-        abs_p = p
-        if not os.path.isabs(abs_p):
-            abs_p = os.path.abspath(os.path.join(os.path.dirname(__file__), p))
+        abs_p = os.path.abspath(os.path.join(ROOT_DIR, p))
         if not os.path.exists(abs_p):
             missing.append(abs_p)
     if missing:
@@ -107,10 +105,12 @@ def ensure_sta_sae_available(generate_hparam_path: str, layers: List[int] | None
             from huggingface_hub import snapshot_download
             repo_id = f"google/{repo_name}"
             os.makedirs(os.path.dirname(base_cache_dir), exist_ok=True)
-            allow_patterns = [
-                os.path.relpath(p, base_cache_dir).replace("\\", "/") + "/**"
-                for p in missing
-            ]
+            allow_patterns = []
+            for p in missing:
+                rel = os.path.relpath(p, base_cache_dir).replace("\\", "/")
+                # ensure pattern stays within repo folder
+                if not rel.startswith(".."):  # inside
+                    allow_patterns.append(rel + "/**")
             snapshot_download(
                 repo_id=repo_id,
                 local_dir=base_cache_dir,
@@ -161,7 +161,8 @@ def main():
     if args.layers is not None:
         cfg_dict["layers"] = args.layers
     if sae_paths_override:
-        cfg_dict["sae_paths"] = sae_paths_override
+        # Use project-root relative paths like "hugging_cache/..."
+        cfg_dict["sae_paths"] = [os.path.join(ROOT_DIR, p) for p in sae_paths_override]
     top_generate_cfg = OmegaConf.create(cfg_dict)
 
     vector_generator = BaseVectorGenerator(top_generate_cfg)
