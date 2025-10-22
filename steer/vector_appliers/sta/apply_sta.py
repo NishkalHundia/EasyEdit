@@ -53,7 +53,8 @@ def apply_sta(hparams: ApplySTAHyperParams,pipline=None,vector=None):
         # shorten tensor print
         try:
             _base = steering_vector.detach().flatten()[:5].tolist()
-            tqdm.write(f"Steering head (first 5): {[_:.4f for _ in _base]}")
+            _vals = ", ".join(f"{v:.4f}" for v in _base)
+            tqdm.write(f"Steering head (first 5): [{_vals}]")
         except Exception:
             pass
         tqdm.write(f"Multiplier {multiplier}")
