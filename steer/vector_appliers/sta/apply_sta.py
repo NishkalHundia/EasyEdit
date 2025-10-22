@@ -52,8 +52,19 @@ def apply_sta(hparams: ApplySTAHyperParams,pipline=None,vector=None):
             print("Steering vector path: ",vector_path)
         print("Steering vector: ",steering_vector)
         print(f"Multiplier {multiplier}")
+        try:
+            base_norm = float(steering_vector.norm().item())
+        except Exception:
+            base_norm = None
+        scaled = multiplier * steering_vector
+        try:
+            scaled_norm = float(scaled.norm().item())
+        except Exception:
+            scaled_norm = None
+        if base_norm is not None and scaled_norm is not None:
+            print(f"Vector norms -> base: {base_norm:.6f}, scaled: {scaled_norm:.6f}")
 
         model.set_add_activations(
-            layer, multiplier * steering_vector, method_name="sta"
+            layer, scaled, method_name="sta"
         )
     return model

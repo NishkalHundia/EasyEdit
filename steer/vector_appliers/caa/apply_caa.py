@@ -46,9 +46,13 @@ def apply_caa(hparams: ApplyCAAHyperParams,pipline=None, vector=None):
             steering_vector = torch.load(vector_path,map_location=device)
             print("Steering vector path: ",vector_path)
         # print(f"Multiplier {multiplier}")
-
+        scaled = multiplier * steering_vector
+        try:
+            print(f"Vector norms -> base: {float(steering_vector.norm().item()):.6f}, scaled: {float(scaled.norm().item()):.6f}")
+        except Exception:
+            pass
         model.set_add_activations(
-            layer, multiplier * steering_vector, method_name="caa"
+            layer, scaled, method_name="caa"
         )
     return model
 
