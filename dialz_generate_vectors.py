@@ -25,7 +25,7 @@ def _resolve_dialz_datasets_dir() -> str:
 DIALZ_DATASETS_DIR = _resolve_dialz_datasets_dir()
 
 
-def load_dialz_dataset(dataset_name: str, limit: int | None = None) -> List[Dict]:
+def load_dialz_dataset(dataset_name: str, limit: int | None = None, seed: int | None = 0) -> List[Dict]:
     dataset_path = os.path.join(DIALZ_DATASETS_DIR, f"{dataset_name}.json")
     if not os.path.exists(dataset_path):
         raise FileNotFoundError(f"Dataset not found: {dataset_path}")
@@ -46,8 +46,9 @@ def load_dialz_dataset(dataset_name: str, limit: int | None = None) -> List[Dict
             "not_matching": negative,
         })
 
-    if limit is not None and limit > 0:
-        normalized = normalized[:limit]
+    if limit is not None and limit > 0 and len(normalized) > limit:
+        rng = random.Random(seed)
+        normalized = rng.sample(normalized, k=limit)
     return normalized
 
 
@@ -135,12 +136,13 @@ def main():
     parser.add_argument("--model", default="google/gemma-2-9b")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--train_limit", type=int, default=128)
+    parser.add_argument("--seed", type=int, default=0, help="Sampling seed for selecting training prompts")
     parser.add_argument("--layers", nargs="+", type=int, default=None, help="Override layers to generate vectors for (e.g., 20 21)")
     parser.add_argument("--sae_width", default=None, help="STA only: SAE width to use (e.g., 16k or 131k). Downloads only that width.")
     args = parser.parse_args()
 
     train_limit = None if args.train_limit == 0 else args.train_limit
-    train_items = load_dialz_dataset(args.dataset, limit=train_limit)
+    train_items = load_dialz_dataset(args.dataset, limit=train_limit, seed=args.seed)
     if not train_items:
         raise RuntimeError(f"No usable items found in dataset {args.dataset}")
 
