@@ -127,7 +127,8 @@ def run(method: str,
         model_name_or_path: str,
         device: str,
         train_limit: int | None,
-        num_test: int) -> None:
+        num_test: int,
+        test_prompts_path: str | None) -> None:
     method = method.lower()
     if method not in {"caa", "sta"}:
         raise ValueError("method must be one of {'caa','sta'}")
@@ -245,16 +246,21 @@ def run(method: str,
     vector_applier = BaseVectorApplier(apply_top_cfg)
     vector_applier.apply_vectors()
 
-    # 4) Build simple test prompts from raw examples and generate
-    with open(os.path.join(DIALZ_DATASETS_DIR, f"{dataset_name}.json"), "r", encoding="utf-8") as f:
-        raw_items = json.load(f)
-    test_entries = build_test_prompts(raw_items, num_prompts=num_test)
-    if not test_entries:
-        print("No test prompts could be constructed from dataset; skipping generation.")
-        return
-
-    test_dataset = {"dialz_test": test_entries}
-    vector_applier.generate(test_dataset)
+    # 4) Load test prompts if provided; otherwise, skip generation to avoid accidental, unclear prompt construction
+    if test_prompts_path:
+        with open(test_prompts_path, "r", encoding="utf-8") as f:
+            user_prompts = json.load(f)
+        # Accept list[str] or list[{input: str}]
+        if isinstance(user_prompts, list) and user_prompts and isinstance(user_prompts[0], str):
+            test_entries = [{"input": s} for s in user_prompts]
+        else:
+            test_entries = [{"input": x.get("input", "")} for x in user_prompts]
+        if num_test and num_test > 0:
+            test_entries = test_entries[:num_test]
+        test_dataset = {"dialz_test": test_entries}
+        vector_applier.generate(test_dataset)
+    else:
+        print("No --test_prompts provided. Skipping generation. Vectors are applied and saved.")
 
     print("\nSteering complete.")
     print(f"Vectors saved under: {os.path.join('vectors', 'dialz', 'gemma-2-9b', dataset_name)}")
@@ -268,7 +274,8 @@ def main():
     parser.add_argument("--model", default="google/gemma-2-9b", help="Model path or HF id for Gemma 2 9B")
     parser.add_argument("--device", default="cuda:0", help="Device, e.g., cuda:0 or cpu")
     parser.add_argument("--train_limit", type=int, default=128, help="Limit number of training pairs (0 = all)")
-    parser.add_argument("--num_test", type=int, default=10, help="Number of test prompts to generate")
+    parser.add_argument("--num_test", type=int, default=10, help="Max number of test prompts to use")
+    parser.add_argument("--test_prompts", default=None, help="Path to JSON with prompts: list[str] or list[{input: str}]")
 
     args = parser.parse_args()
     train_limit = None if args.train_limit == 0 else args.train_limit
@@ -280,6 +287,7 @@ def main():
         device=args.device,
         train_limit=train_limit,
         num_test=args.num_test,
+        test_prompts_path=args.test_prompts,
     )
 
 
