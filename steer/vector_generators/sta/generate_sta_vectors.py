@@ -119,12 +119,43 @@ def generate_sta_vectors(hparams:STAHyperParams, dataset, model = None, dataset_
         
     device = model.device
     saes = dict([(layer, []) for layer in args.layers])
-    for i,layer in enumerate(args.layers):
-        assert os.path.exists(args.sae_paths[i]), f"{args.sae_paths[i]} does not exist!!!"
+    for i, layer in enumerate(args.layers):
+        sae_path = args.sae_paths[i] if i < len(args.sae_paths) else ""
         if "gemma" in args.model_name_or_path.lower():
-            saes[layer], _, _ = load_gemma_2_sae(sae_path=args.sae_paths[i], device=device)
+            # Prefer SAE-Lens canonical loader; fallback to local path if available
+            try:
+                import re
+                from sae_lens import SAE as SAE_LENS
+                width = "16k"
+                m = re.search(r"width_(\\w+)", sae_path)
+                if m:
+                    width = m.group(1)
+                model_lower = args.model_name_or_path.lower()
+                if "2-2b" in model_lower or "2b" in model_lower:
+                    release = "gemma-scope-2b-pt-res-canonical"
+                elif "2-9b" in model_lower or "9b" in model_lower:
+                    release = "gemma-scope-9b-pt-res-canonical"
+                else:
+                    release = "gemma-scope-9b-pt-res-canonical"
+                sae, cfg_dict, sparsity = SAE_LENS.from_pretrained(
+                    release=release,
+                    sae_id=f"layer_{layer}/width_{width}/canonical",
+                )
+                try:
+                    sae = sae.to(device)
+                except Exception:
+                    pass
+                saes[layer] = sae
+            except Exception:
+                if os.path.exists(sae_path):
+                    saes[layer], _, _ = load_gemma_2_sae(sae_path=sae_path, device=device)
+                else:
+                    raise AssertionError(f"SAE not found for layer {layer}: tried SAE Lens canonical and local path {sae_path}")
         else:
-            saes[layer], _, _ = load_sae_from_dir(args.sae_paths[i], device=device)
+            if os.path.exists(sae_path):
+                saes[layer], _, _ = load_sae_from_dir(sae_path, device=device)
+            else:
+                raise AssertionError(f"Non-Gemma SAE path not found: {sae_path}")
     
     need_train_layers = []
     vectors = {}
