@@ -9,7 +9,7 @@ import os
 import random
 from omegaconf import OmegaConf
 from steer.vector_appliers.vector_applier import BaseVectorApplier
-from steer.vector_generators.vector_generator import BaseVectorGenerator
+from steer.vector_generators.vector_generators import BaseVectorGenerator
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
