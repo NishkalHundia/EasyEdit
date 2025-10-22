@@ -76,23 +76,21 @@ def ensure_sta_sae_available(generate_hparam_path: str,
         # For non-Gemma models, fallback to YAML
         return sae_paths
 
-    # Choose SAE repo by Gemma size; default to 9b if unknown
-    repo_name = "gemma-scope-9b-it-res"
+    # Choose SAE repo by Gemma size; prefer canonical pretraining (not it-res)
     if "2-2b" in model_lower:
-        repo_name = "gemma-scope-2b-it-res"
+        repo_name = "gemma-scope-2b-pt-res-canonical"
     elif "2-9b" in model_lower or "9b" in model_lower:
-        repo_name = "gemma-scope-9b-it-res"
+        repo_name = "gemma-scope-9b-pt-res-canonical"
+    else:
+        repo_name = "gemma-scope-9b-pt-res-canonical"
 
     base_cache_dir = os.path.join(ROOT_DIR, "hugging_cache", repo_name)
     # Build target sae_paths if a specific width is requested or none existed
     target_layers = layers or [20]
     width_str = sae_width or "16k"
     # Canonical average dirs per width (based on project usage)
-    canonical_avg = {
-        "16k": "average_l0_91",
-        "131k": "average_l0_24",
-    }
-    avg_dir = canonical_avg.get(width_str, "average_l0_91")
+    # Canonical release uses 'canonical' leaf folder
+    avg_dir = "canonical"
     target_paths_rel: List[str] = [
         os.path.join("hugging_cache", repo_name, f"layer_{L}", f"width_{width_str}", avg_dir)
         for L in target_layers
@@ -115,7 +113,7 @@ def ensure_sta_sae_available(generate_hparam_path: str,
                 rel = os.path.relpath(p, base_cache_dir).replace("\\", "/")
                 # ensure pattern stays within repo folder
                 if not rel.startswith(".."):  # inside
-                    # we need params.npz and cfg.json (and possibly others) under this folder
+                    # we need params.npz and cfg.json under this folder
                     allow_patterns.append(rel + "/params.npz")
                     allow_patterns.append(rel + "/cfg.json")
             snapshot_download(
