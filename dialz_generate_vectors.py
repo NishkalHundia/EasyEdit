@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 from typing import Dict, List
+import random
 
 from omegaconf import OmegaConf
 import yaml
