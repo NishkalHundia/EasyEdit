@@ -21,7 +21,7 @@ generation_data:
 generation_data_size: null
 generation_output_dir: generation/DeepSeek-R1-Distill-Llama-8B/realtoxicityprompts/caa
 num_responses: 1
-steer_from_end_position: false
+steer_from_end_position: true  # CRITICAL: Only steer generated tokens, not prompt
 generate_orig_output: true
 
 # Model generation parameters - must match Hugging Face parameter names or the vLLM parameter names
@@ -36,9 +36,9 @@ generate_orig_output: true
   
 generation_params: 
   max_new_tokens: 100
-  do_sample: true
-  temperature: 0.9
-  top_p: 0.9
+  do_sample: false  # Use greedy decoding to see steering effects clearly
+  # temperature: 0.9   # Commented out when do_sample=false
+  # top_p: 0.9         # Commented out when do_sample=false
 
 # set to true for vLLM generation
 vllm_enable: false

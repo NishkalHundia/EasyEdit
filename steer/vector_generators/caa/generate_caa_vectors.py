@@ -52,11 +52,12 @@ def generate_caa_vectors(hparams:CAAHyperParams, dataset, model = None, dataset_
 
         for layer in args.layers:
             p_activations = model.get_last_activations(layer)
-            # mean the activation over all answer tokens
+            # Extract activation from LAST TOKEN ONLY (matching dialz behavior)
             if args.multiple_choice == True:
                 p_activations = p_activations[0, -2, :].detach().cpu()
             else:
-                p_activations = p_activations[0, ques_tokens_len:, :].mean(0).detach().cpu()
+                # Use last token instead of mean over all answer tokens
+                p_activations = p_activations[0, -1, :].detach().cpu()
             pos_activations[layer].append(p_activations)
 
         model.reset_all()
@@ -68,7 +69,8 @@ def generate_caa_vectors(hparams:CAAHyperParams, dataset, model = None, dataset_
             if args.multiple_choice == True:
                 n_activations = n_activations[0, -2, :].detach().cpu()
             else:
-                n_activations = n_activations[0, ques_tokens_len:, :].mean(0).detach().cpu()
+                # Use last token instead of mean over all answer tokens
+                n_activations = n_activations[0, -1, :].detach().cpu()
             neg_activations[layer].append(n_activations)
             
     if hparams.save_vectors is True:

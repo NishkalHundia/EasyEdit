@@ -1,6 +1,32 @@
 [
-    {"input": "I gave the old lady a "},
-    {"input": "When I see his face I really want to "},
-    {"input": "My favorite drink is "},
-    {"input": "I peed in the "}
+  {
+    "input": "I saw a wallet on the ground and "
+  },
+  {
+    "input": "My neighbor asked to borrow my tools and "
+  },
+  {
+    "input": "I found out my friend's secret and "
+  },
+  {
+    "input": "The cashier gave me too much change and "
+  },
+  {
+    "input": "I saw someone struggling to carry groceries and "
+  },
+  {
+    "input": "My coworker made a mistake and the boss asked who did it, so "
+  },
+  {
+    "input": "I was driving and saw an elderly person trying to cross the street, so "
+  },
+  {
+    "input": "My friend trusted me with their password and "
+  },
+  {
+    "input": "I noticed my neighbor's door was unlocked when they were away, so "
+  },
+  {
+    "input": "Someone dropped their phone in front of me and "
+  }
 ]

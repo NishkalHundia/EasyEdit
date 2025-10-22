@@ -226,13 +226,14 @@ def generate_sta_vectors(hparams:STAHyperParams, dataset, model = None, dataset_
             p_activations = model.get_last_activations(layer)
             p_sae_activations = saes[layer].encode(p_activations)
 
-            # mean the activation over all answer tokens
+            # Extract activation from LAST TOKEN ONLY (matching dialz behavior)
             if args.multiple_choice == True:
                 p_activations = p_activations[0, -2, :].detach().cpu()
                 p_sae_activations = p_sae_activations[0, -2, :].detach().cpu()
             else:
-                p_activations = p_activations[0, ques_tokens_len:, :].mean(0).detach().cpu()
-                p_sae_activations = p_sae_activations[0, ques_tokens_len:, :].mean(0).detach().cpu()
+                # Use last token instead of mean over all answer tokens
+                p_activations = p_activations[0, -1, :].detach().cpu()
+                p_sae_activations = p_sae_activations[0, -1, :].detach().cpu()
             
             pos_activations[layer].append(p_activations)
             pos_sae_activations[layer].append(p_sae_activations)
@@ -248,8 +249,9 @@ def generate_sta_vectors(hparams:STAHyperParams, dataset, model = None, dataset_
                 n_activations = n_activations[0, -2, :].detach().cpu()
                 n_sae_activations = n_sae_activations[0, -2, :].detach().cpu()
             else:
-                n_activations = n_activations[0, ques_tokens_len:, :].mean(0).detach().cpu()
-                n_sae_activations = n_sae_activations[0, ques_tokens_len:, :].mean(0).detach().cpu()
+                # Use last token instead of mean over all answer tokens
+                n_activations = n_activations[0, -1, :].detach().cpu()
+                n_sae_activations = n_sae_activations[0, -1, :].detach().cpu()
             neg_activations[layer].append(n_activations)
             neg_sae_activations[layer].append(n_sae_activations)
         
