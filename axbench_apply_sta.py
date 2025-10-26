@@ -9,8 +9,7 @@ from steer.vector_appliers.vector_applier import BaseVectorApplier
 
 
 def build_test_inputs(concept_id: int) -> List[Dict[str, str]]:
-    # Load train and test separately; use streaming for test
-    train = load_dataset("pyvene/axbench-concept500", split="train", verification_mode="no_checks")
+    # Stream only the test split. Collect all positives for this concept_id.
     test_stream = load_dataset(
         "pyvene/axbench-concept500",
         split="test",
@@ -18,19 +17,16 @@ def build_test_inputs(concept_id: int) -> List[Dict[str, str]]:
         verification_mode="no_checks",
     )
 
-    pos_rows = [r for r in train if r.get("concept_id") == concept_id and r.get("category") == "positive"]
-    if not pos_rows:
-        raise ValueError(f"No positive rows found in train for concept_id={concept_id}")
-    genre = pos_rows[0].get("concept_genre")
-
     items: List[Dict[str, str]] = []
     for r in test_stream:
-        if r.get("concept_genre") != genre:
+        if r.get("concept_id") != concept_id:
+            continue
+        if r.get("category") != "positive":
             continue
         inp = r.get("input", "")
         if not inp:
             continue
-        expected = r.get("output", "") if (r.get("category") == "positive" and r.get("concept_id") == concept_id) else ""
+        expected = r.get("output", "")
         items.append({"input": inp, "reference_response": expected})
     return items
 
