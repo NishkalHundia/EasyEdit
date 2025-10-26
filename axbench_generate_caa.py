@@ -1,105 +1,99 @@
 #!/usr/bin/env python3
-"""Generate CAA vectors from axbench-concept500 dataset."""
+"""Generate CAA vectors from AxBench Concept500 dataset.
+
+This mirrors the dialz CAA generator but builds contrastive pairs from
+`pyvene/axbench-concept500` by:
+- selecting positive rows for a given concept_id from the train split
+- determining the concept's genre
+- collecting negative rows of the same genre with identical input prompts
+  whose outputs are negative (no concept) to form (prompt, matching, not_matching) pairs
+"""
 
 import os
 import random
+from typing import List, Dict
+from datasets import load_dataset
 from omegaconf import OmegaConf
 from steer.vector_generators.vector_generators import BaseVectorGenerator
-from datasets import load_dataset
 
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def load_axbench_concept(concept_id, limit=None, seed=0):
-    """Load axbench-concept500 dataset and create contrastive pairs for a specific concept."""
-    print(f"Loading axbench-concept500 train split from HuggingFace...")
-    
-    # Load only the train split, ignore verification to avoid schema mismatch issues
-    dataset = load_dataset("pyvene/axbench-concept500", split="train", 
-                          download_mode="force_redownload", 
-                          ignore_verifications=True)
-    
-    # Find positive examples for this concept_id
-    positive_examples = []
-    concept_genre = None
-    concept_name = None
-    
-    for item in dataset:
-        if item['concept_id'] == concept_id and item['category'] == 'positive':
-            positive_examples.append({
-                'input': item['input'],
-                'output': item['output'],
-                'genre': item['concept_genre'],
-                'concept': item['output_concept']
-            })
-            if concept_genre is None:
-                concept_genre = item['concept_genre']
-                concept_name = item['output_concept']
-    
-    if not positive_examples:
-        raise ValueError(f"No positive examples found for concept_id {concept_id}")
-    
-    print(f"Found {len(positive_examples)} positive examples for concept '{concept_name}' (ID: {concept_id}, genre: {concept_genre})")
-    
-    # Create a mapping of input prompts from positive examples
-    positive_inputs = {ex['input'] for ex in positive_examples}
-    
-    # Find matching negative examples (same genre, same input prompt)
-    negative_lookup = {}
-    for item in dataset:
-        if (item['category'] == 'negative' and 
-            item['concept_genre'] == concept_genre and
-            item['input'] in positive_inputs):
-            negative_lookup[item['input']] = item['output']
-    
-    print(f"Found {len(negative_lookup)} matching negative examples")
-    
-    # Create contrastive pairs
-    contrastive_pairs = []
-    for pos_ex in positive_examples:
-        if pos_ex['input'] in negative_lookup:
-            contrastive_pairs.append({
-                "question": pos_ex['input'],
-                "matching": pos_ex['output'],  # Contains the concept
-                "not_matching": negative_lookup[pos_ex['input']]  # Doesn't contain concept
-            })
-    
-    if not contrastive_pairs:
-        raise ValueError(f"No contrastive pairs created for concept_id {concept_id}")
-    
-    print(f"Created {len(contrastive_pairs)} contrastive pairs")
-    
-    # Random sample if limit specified
-    if limit and len(contrastive_pairs) > limit:
+def build_contrastive_pairs(
+    concept_id: int,
+    split: str = "train",
+    seed: int = 0,
+    limit: int = None,
+) -> List[Dict[str, str]]:
+    """Create contrastive pairs from Concept500 for a specific concept_id.
+
+    Rules:
+    - positives: rows with given concept_id and category == 'positive' in the given split
+    - genre: inferred from positive rows' `concept_genre`
+    - negatives: rows with same genre, same input text, category == 'negative'
+    - pair each positive row to the negative row with exactly matching input
+    """
+    # Load only the requested split to avoid schema mismatches on other splits
+    dsplit = load_dataset("pyvene/axbench-concept500", split=split)
+
+    # Filter positives for concept_id
+    pos_rows = [r for r in dsplit if r.get("concept_id") == concept_id and r.get("category") == "positive"]
+    if not pos_rows:
+        raise ValueError(f"No positive rows found for concept_id={concept_id} in split='{split}'")
+
+    # Determine genre from positives
+    genre = pos_rows[0].get("concept_genre")
+    # Index negatives by input for same genre
+    neg_by_input = {}
+    for r in dsplit:
+        if r.get("concept_genre") == genre and r.get("category") == "negative":
+            key = r.get("input", "")
+            # prefer exact single mapping; if multiple, keep first
+            if key and key not in neg_by_input:
+                neg_by_input[key] = r
+
+    pairs: List[Dict[str, str]] = []
+    for r in pos_rows:
+        inp = r.get("input", "")
+        if not inp:
+            continue
+        neg = neg_by_input.get(inp)
+        if not neg:
+            continue
+        pairs.append({
+            "question": inp,
+            "matching": r.get("output", ""),
+            "not_matching": neg.get("output", ""),
+        })
+
+    if not pairs:
+        raise ValueError(f"No contrastive pairs found for concept_id={concept_id} (genre={genre})")
+
+    if limit and len(pairs) > limit:
         rng = random.Random(seed)
-        contrastive_pairs = rng.sample(contrastive_pairs, k=limit)
-        print(f"Sampled {limit} pairs")
-    
-    return contrastive_pairs, concept_name, concept_genre
+        pairs = rng.sample(pairs, k=limit)
+
+    return pairs
 
 
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--concept_id", type=int, required=True, help="Concept ID from axbench-concept500")
-    parser.add_argument("--model", default="google/gemma-2-9b")
+    parser.add_argument("--concept_id", type=int, required=True)
+    parser.add_argument("--model", default="google/gemma-2-9b-it")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--layers", nargs="+", type=int, default=[20])
-    parser.add_argument("--train_limit", type=int, default=None, help="Limit number of training examples")
+    parser.add_argument("--train_limit", type=int, default=300)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--split", default="train")
     args = parser.parse_args()
-    
-    # Load training data
-    train_data, concept_name, concept_genre = load_axbench_concept(
-        args.concept_id, 
-        limit=args.train_limit, 
-        seed=args.seed
-    )
-    
-    dataset_name = f"concept_{args.concept_id}"
-    
+
+    # Load training data (contrastive pairs)
+    print(f"Building contrastive pairs from Concept500 for concept_id={args.concept_id} split={args.split} ...")
+    train_data = build_contrastive_pairs(args.concept_id, split=args.split, seed=args.seed, limit=args.train_limit)
+    print(f"Built {len(train_data)} training pairs")
+
     # Config for vector generation
-    vector_base_dir = f"vectors/axbench/{args.model.split('/')[-1]}"
-    vector_dir = f"{vector_base_dir}/{dataset_name}/caa_vector"
+    model_tag = args.model.split("/")[-1]
+    vector_base_dir = f"vectors/axbench/{model_tag}/concept_{args.concept_id}"
     gen_config = {
         "alg_name": "caa",
         "model_name_or_path": args.model,
@@ -111,21 +105,22 @@ def main():
         "save_vectors": True,
         "steer_vector_output_dirs": [vector_base_dir],
         "steer_train_hparam_paths": ["hparams/Steer/caa_hparams/generate_caa.yaml"],
-        "steer_train_dataset": [dataset_name],
+        "steer_train_dataset": [f"axbench_concept_{args.concept_id}"],
     }
-    
+
     # Generate vectors
-    print(f"\nGenerating CAA vectors for concept '{concept_name}' (genre: {concept_genre})...")
+    print("Generating CAA vectors...")
     gen_cfg = OmegaConf.create(gen_config)
     vector_generator = BaseVectorGenerator(gen_cfg)
-    vector_generator.generate_vectors({dataset_name: train_data})
-    print(f"\nVectors saved to {vector_dir}")
-    print(f"\nTo apply these vectors, run:")
-    print(f"python axbench_apply_caa.py --concept_id {args.concept_id} --model {args.model} --layers {' '.join(map(str, args.layers))} --multipliers 1.0 2.0")
-    print(f"\nFor sanity check, run:")
-    print(f"python axbench_sanity_check.py --concept_id {args.concept_id} --model {args.model} --method caa --layers {' '.join(map(str, args.layers))} --multipliers 1.0")
+    vector_generator.generate_vectors({f"axbench_concept_{args.concept_id}": train_data})
+    print(f"\nVectors saved under {vector_base_dir}/caa_vector")
+    print("\nTo apply these vectors, run:")
+    print(
+        f"python axbench_apply_caa.py --concept_id {args.concept_id} --model {args.model} --layers {' '.join(map(str, args.layers))} --multipliers 1.0 2.0"
+    )
 
 
 if __name__ == "__main__":
     main()
+
 
