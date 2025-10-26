@@ -6,8 +6,7 @@ import os
 import random
 from omegaconf import OmegaConf
 from steer.vector_generators.vector_generators import BaseVectorGenerator
-from datasets import load_dataset
-import shutil
+import pandas as pd
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -15,21 +14,13 @@ def load_concept_data(concept_id, limit=None, seed=0):
     """Load axbench-concept500 dataset and create contrastive pairs for a concept."""
     print(f"Loading axbench-concept500 dataset for concept_id={concept_id}...")
     
-    # Load train split directly (use streaming to avoid schema mismatch issues)
-    try:
-        dataset = load_dataset("pyvene/axbench-concept500", split="train", streaming=True)
-        # Convert streaming dataset to list
-        dataset = list(dataset)
-    except Exception as e:
-        print(f"Streaming failed, trying direct load with download_mode='force_redownload': {e}")
-        # Clear cache and reload
-        import shutil
-        cache_dir = os.path.expanduser("~/.cache/huggingface/datasets/pyvene___axbench-concept500")
-        if os.path.exists(cache_dir):
-            print(f"Clearing cache at {cache_dir}")
-            shutil.rmtree(cache_dir)
-        dataset = load_dataset("pyvene/axbench-concept500", split="train")
-        dataset = list(dataset)
+    # Load train split from parquet directly to avoid schema issues
+    train_url = "https://huggingface.co/datasets/pyvene/axbench-concept500/resolve/main/data/train-*.parquet"
+    print("Loading train split from parquet files...")
+    df = pd.read_parquet(train_url)
+    
+    # Convert to list of dicts
+    dataset = df.to_dict('records')
     
     # Find positive examples for this concept
     positive_examples = [ex for ex in dataset if ex['concept_id'] == concept_id and ex['category'] == 'positive']

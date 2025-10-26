@@ -5,7 +5,7 @@ import json
 import os
 from omegaconf import OmegaConf
 from steer.vector_appliers.vector_applier import BaseVectorApplier
-from datasets import load_dataset
+import pandas as pd
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -13,16 +13,13 @@ def load_test_data(concept_id):
     """Load test data for a specific concept from axbench-concept500."""
     print(f"Loading test data for concept_id={concept_id}...")
     
-    # Load test split directly (use streaming to avoid schema mismatch issues)
-    try:
-        dataset = load_dataset("pyvene/axbench-concept500", split="test", streaming=True)
-        # Convert streaming dataset to list
-        dataset = list(dataset)
-    except Exception as e:
-        print(f"Streaming failed, trying direct load: {e}")
-        # Try direct load
-        dataset = load_dataset("pyvene/axbench-concept500", split="test")
-        dataset = list(dataset)
+    # Load test split from parquet directly to avoid schema issues
+    test_url = "https://huggingface.co/datasets/pyvene/axbench-concept500/resolve/main/data/test-*.parquet"
+    print("Loading test split from parquet files...")
+    df = pd.read_parquet(test_url)
+    
+    # Convert to list of dicts
+    dataset = df.to_dict('records')
     
     # Find all examples for this concept (positive ones)
     test_examples = [
