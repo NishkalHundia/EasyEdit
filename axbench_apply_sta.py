@@ -5,7 +5,7 @@ import json
 import os
 from omegaconf import OmegaConf
 from steer.vector_appliers.vector_applier import BaseVectorApplier
-from datasets import load_dataset, Features, Value
+from datasets import load_dataset
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -13,21 +13,8 @@ def load_test_data(concept_id):
     """Load test data for a specific concept from axbench-concept500."""
     print(f"Loading test data for concept_id={concept_id}...")
     
-    # Define features to include all columns (train + test)
-    features = Features({
-        'input': Value('string'),
-        'output': Value('string'),
-        'output_concept': Value('string'),
-        'concept_genre': Value('string'),
-        'category': Value('string'),
-        'dataset_category': Value('string'),
-        'concept_id': Value('int64'),
-        'sae_link': Value('string'),
-        'sae_id': Value('int64'),
-    })
-    
-    # Load with explicit features to avoid schema mismatch
-    dataset = load_dataset("pyvene/axbench-concept500", split="test", features=features)
+    # Load test split - use download_mode to force fresh download and avoid cache issues
+    dataset = load_dataset("pyvene/axbench-concept500", split="test", download_mode="force_redownload")
     dataset = list(dataset)
     
     # Find all examples for this concept (positive ones)
