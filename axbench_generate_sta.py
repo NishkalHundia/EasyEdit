@@ -1,86 +1,88 @@
 #!/usr/bin/env python3
 """Generate STA vectors from axbench-concept500 dataset."""
 
-import json
 import os
 import random
 from omegaconf import OmegaConf
 from steer.vector_generators.vector_generators import BaseVectorGenerator
-import pandas as pd
+from datasets import load_dataset
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def load_concept_data(concept_id, limit=None, seed=0):
-    """Load axbench-concept500 dataset and create contrastive pairs for a concept."""
-    print(f"Loading axbench-concept500 dataset for concept_id={concept_id}...")
+def load_axbench_concept(concept_id, limit=None, seed=0):
+    """Load axbench-concept500 dataset and create contrastive pairs for a specific concept."""
+    print(f"Loading axbench-concept500 dataset from HuggingFace...")
     
-    # Load entire train dataset from HF parquet files
-    print("Downloading full train dataset...")
-    train_url = "hf://datasets/pyvene/axbench-concept500/data/train-*.parquet"
-    df = pd.read_parquet(train_url)
+    # Load train split
+    dataset = load_dataset("pyvene/axbench-concept500", split="train")
     
-    # Convert to list of dicts
-    dataset = df.to_dict('records')
+    # Find positive examples for this concept_id
+    positive_examples = []
+    concept_genre = None
+    concept_name = None
     
-    # Find positive examples for this concept
-    positive_examples = [ex for ex in dataset if ex['concept_id'] == concept_id and ex['category'] == 'positive']
+    for item in dataset:
+        if item['concept_id'] == concept_id and item['category'] == 'positive':
+            positive_examples.append({
+                'input': item['input'],
+                'output': item['output'],
+                'genre': item['concept_genre'],
+                'concept': item['output_concept']
+            })
+            if concept_genre is None:
+                concept_genre = item['concept_genre']
+                concept_name = item['output_concept']
     
     if not positive_examples:
-        raise ValueError(f"No positive examples found for concept_id={concept_id}")
+        raise ValueError(f"No positive examples found for concept_id {concept_id}")
     
-    # Get genre for this concept
-    concept_genre = positive_examples[0]['concept_genre']
-    concept_name = positive_examples[0]['output_concept']
-    print(f"Concept: {concept_name}, Genre: {concept_genre}")
-    print(f"Found {len(positive_examples)} positive examples")
+    print(f"Found {len(positive_examples)} positive examples for concept '{concept_name}' (ID: {concept_id}, genre: {concept_genre})")
     
-    # Get all negative examples with same genre
-    negative_examples = [
-        ex for ex in dataset 
-        if ex['category'] == 'negative' and ex['concept_genre'] == concept_genre
-    ]
-    print(f"Found {len(negative_examples)} negative examples in genre '{concept_genre}'")
+    # Create a mapping of input prompts from positive examples
+    positive_inputs = {ex['input'] for ex in positive_examples}
     
-    # Create mapping of input prompts to negative examples
-    negative_by_input = {}
-    for neg_ex in negative_examples:
-        input_text = neg_ex['input']
-        if input_text not in negative_by_input:
-            negative_by_input[input_text] = neg_ex
+    # Find matching negative examples (same genre, same input prompt)
+    negative_lookup = {}
+    for item in dataset:
+        if (item['category'] == 'negative' and 
+            item['concept_genre'] == concept_genre and
+            item['input'] in positive_inputs):
+            negative_lookup[item['input']] = item['output']
     
-    # Create contrastive pairs by matching positive and negative examples with same input
+    print(f"Found {len(negative_lookup)} matching negative examples")
+    
+    # Create contrastive pairs
     contrastive_pairs = []
     for pos_ex in positive_examples:
-        input_text = pos_ex['input']
-        if input_text in negative_by_input:
+        if pos_ex['input'] in negative_lookup:
             contrastive_pairs.append({
-                "question": input_text,
-                "matching": pos_ex['output'],
-                "not_matching": negative_by_input[input_text]['output']
+                "question": pos_ex['input'],
+                "matching": pos_ex['output'],  # Contains the concept
+                "not_matching": negative_lookup[pos_ex['input']]  # Doesn't contain concept
             })
     
-    print(f"Created {len(contrastive_pairs)} contrastive pairs")
-    
     if not contrastive_pairs:
-        raise ValueError(f"No contrastive pairs found for concept_id={concept_id}")
+        raise ValueError(f"No contrastive pairs created for concept_id {concept_id}")
+    
+    print(f"Created {len(contrastive_pairs)} contrastive pairs")
     
     # Random sample if limit specified
     if limit and len(contrastive_pairs) > limit:
         rng = random.Random(seed)
         contrastive_pairs = rng.sample(contrastive_pairs, k=limit)
-        print(f"Sampled {len(contrastive_pairs)} pairs (limit={limit})")
+        print(f"Sampled {limit} pairs")
     
-    return contrastive_pairs, concept_name
+    return contrastive_pairs, concept_name, concept_genre
 
 
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--concept_id", required=True, type=int, help="Concept ID from axbench-concept500")
+    parser.add_argument("--concept_id", type=int, required=True, help="Concept ID from axbench-concept500")
     parser.add_argument("--model", default="google/gemma-2-9b")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--layers", nargs="+", type=int, default=[20])
-    parser.add_argument("--train_limit", type=int, default=None, help="Limit number of training pairs")
+    parser.add_argument("--train_limit", type=int, default=None, help="Limit number of training examples")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--sae_width", default="16k", help="SAE width (16k or 131k)")
     parser.add_argument("--trim", type=float, default=0.65)
@@ -105,13 +107,17 @@ def main():
         raise ValueError("STA currently only supports Gemma models")
     
     # Load training data
-    train_data, concept_name = load_concept_data(args.concept_id, limit=args.train_limit, seed=args.seed)
+    train_data, concept_name, concept_genre = load_axbench_concept(
+        args.concept_id, 
+        limit=args.train_limit, 
+        seed=args.seed
+    )
+    
+    dataset_name = f"concept_{args.concept_id}"
     
     # Config for vector generation
-    dataset_name = f"concept_{args.concept_id}"
     vector_base_dir = f"vectors/axbench/{args.model.split('/')[-1]}"
     vector_dir = f"{vector_base_dir}/{dataset_name}/sta_vector"
-    
     gen_config = {
         "alg_name": "sta",
         "model_name_or_path": args.model,
@@ -131,29 +137,17 @@ def main():
     }
     
     # Generate vectors
-    print("\nGenerating STA vectors...")
+    print(f"\nGenerating STA vectors for concept '{concept_name}' (genre: {concept_genre})...")
     gen_cfg = OmegaConf.create(gen_config)
     vector_generator = BaseVectorGenerator(gen_cfg)
     vector_generator.generate_vectors({dataset_name: train_data})
-    
-    # Save training pairs for sanity check
-    sanity_dir = f"vectors/axbench/{args.model.split('/')[-1]}/{dataset_name}"
-    os.makedirs(sanity_dir, exist_ok=True)
-    with open(os.path.join(sanity_dir, "train_pairs.json"), "w", encoding="utf-8") as f:
-        json.dump(train_data, f, indent=2, ensure_ascii=False)
-    
-    print(f"\n{'='*60}")
-    print(f"Vectors saved to: {vector_dir}")
-    print(f"Training pairs saved to: {sanity_dir}/train_pairs.json")
-    print(f"Concept: {concept_name} (ID: {args.concept_id})")
-    print(f"{'='*60}")
+    print(f"\nVectors saved to {vector_dir}")
     print(f"\nTo apply these vectors, run:")
     print(f"python axbench_apply_sta.py --concept_id {args.concept_id} --model {args.model} --layers {' '.join(map(str, args.layers))} --multipliers 1.0 2.0")
-    print(f"\nTo run sanity check, run:")
-    print(f"python axbench_sanity_check.py --concept_id {args.concept_id} --method sta --model {args.model} --layers {' '.join(map(str, args.layers))} --multipliers 1.0")
+    print(f"\nFor sanity check, run:")
+    print(f"python axbench_sanity_check.py --concept_id {args.concept_id} --model {args.model} --method sta --layers {' '.join(map(str, args.layers))} --multipliers 1.0")
 
 
 if __name__ == "__main__":
     main()
-
 
