@@ -10,7 +10,7 @@ import os
 import random
 from typing import Dict, List, Tuple
 
-from datasets import load_dataset
+import pandas as pd
 from omegaconf import OmegaConf
 
 from steer.vector_generators.vector_generators import BaseVectorGenerator
@@ -82,9 +82,27 @@ def main():
     args = parser.parse_args()
 
     print("Loading Concept500 (train) ...")
-    # Load only train split - use ignore_verifications to skip schema checking
-    ds_train = load_dataset("pyvene/axbench-concept500", split="train", ignore_verifications=True)
-    train_rows = [dict(r) for r in ds_train]
+    # Download train parquet directly from HF to avoid multi-split schema conflicts
+    import tempfile
+    import subprocess
+    
+    cache_dir = os.path.expanduser("~/.cache/huggingface/datasets")
+    train_cache_path = os.path.join(cache_dir, "pyvene___axbench-concept500", "default", "train", "0.0.0", "cache-train.arrow")
+    
+    # Check if already cached
+    if os.path.exists(train_cache_path):
+        print("Using cached train data...")
+        from datasets import load_from_disk
+        ds_train = load_from_disk(os.path.dirname(train_cache_path))
+        train_rows = [dict(r) for r in ds_train]
+    else:
+        print("Downloading train split...")
+        # Direct download
+        train_url = "https://huggingface.co/datasets/pyvene/axbench-concept500/resolve/main/train-00000-of-00001.parquet"
+        tmp_path = tempfile.mktemp(suffix=".parquet")
+        subprocess.run(["wget", "-q", "-O", tmp_path, train_url], check=True)
+        train_rows = pd.read_parquet(tmp_path).to_dict('records')
+        os.unlink(tmp_path)
 
     pairs = _build_contrastive_pairs(
         concept_id=args.concept_id,

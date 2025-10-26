@@ -8,7 +8,7 @@ applying CAA vectors. Supports multiple multipliers.
 import os
 from typing import Dict, List
 
-from datasets import load_dataset
+import pandas as pd
 from omegaconf import OmegaConf
 
 from steer.vector_appliers.vector_applier import BaseVectorApplier
@@ -46,8 +46,24 @@ def main():
     args = parser.parse_args()
 
     print("Loading Concept500 (test) ...")
-    ds_test = load_dataset("pyvene/axbench-concept500", split="test", ignore_verifications=True)
-    test_rows = [dict(r) for r in ds_test]
+    import tempfile
+    import subprocess
+    
+    cache_dir = os.path.expanduser("~/.cache/huggingface/datasets")
+    test_cache_path = os.path.join(cache_dir, "pyvene___axbench-concept500", "default", "test", "0.0.0", "cache-test.arrow")
+    
+    if os.path.exists(test_cache_path):
+        print("Using cached test data...")
+        from datasets import load_from_disk
+        ds_test = load_from_disk(os.path.dirname(test_cache_path))
+        test_rows = [dict(r) for r in ds_test]
+    else:
+        print("Downloading test split...")
+        test_url = "https://huggingface.co/datasets/pyvene/axbench-concept500/resolve/main/test-00000-of-00001.parquet"
+        tmp_path = tempfile.mktemp(suffix=".parquet")
+        subprocess.run(["wget", "-q", "-O", tmp_path, test_url], check=True)
+        test_rows = pd.read_parquet(tmp_path).to_dict('records')
+        os.unlink(tmp_path)
     items = _build_test_inputs(args.concept_id, test_rows)
     if not items:
         raise RuntimeError("No test items found for given concept_id")
