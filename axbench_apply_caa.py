@@ -13,8 +13,9 @@ def load_test_data(concept_id):
     """Load test data for a specific concept from axbench-concept500."""
     print(f"Loading test data for concept_id={concept_id}...")
     
-    # Load test split
-    dataset = load_dataset("pyvene/axbench-concept500", split="test")
+    # Load entire dataset first to avoid schema mismatch issues between splits
+    full_dataset = load_dataset("pyvene/axbench-concept500")
+    dataset = full_dataset["test"]
     
     # Find all examples for this concept (positive ones)
     test_examples = [

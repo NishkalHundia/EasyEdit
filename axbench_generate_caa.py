@@ -14,8 +14,9 @@ def load_concept_data(concept_id, limit=None, seed=0):
     """Load axbench-concept500 dataset and create contrastive pairs for a concept."""
     print(f"Loading axbench-concept500 dataset for concept_id={concept_id}...")
     
-    # Load train split
-    dataset = load_dataset("pyvene/axbench-concept500", split="train")
+    # Load entire dataset first to avoid schema mismatch issues between splits
+    full_dataset = load_dataset("pyvene/axbench-concept500")
+    dataset = full_dataset["train"]
     
     # Find positive examples for this concept
     positive_examples = [ex for ex in dataset if ex['concept_id'] == concept_id and ex['category'] == 'positive']
