@@ -82,7 +82,7 @@ def main():
     args = parser.parse_args()
 
     print("Loading Concept500 (train) ...")
-    ds_train = load_dataset("pyvene/axbench-concept500", split="train")
+    ds_train = load_dataset("pyvene/axbench-concept500", split="train", verification_mode="no_checks")
     train_rows = [dict(r) for r in ds_train]
 
     pairs = _build_contrastive_pairs(

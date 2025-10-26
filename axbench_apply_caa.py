@@ -46,7 +46,7 @@ def main():
     args = parser.parse_args()
 
     print("Loading Concept500 (test) ...")
-    ds_test = load_dataset("pyvene/axbench-concept500", split="test")
+    ds_test = load_dataset("pyvene/axbench-concept500", split="test", verification_mode="no_checks")
     test_rows = [dict(r) for r in ds_test]
     items = _build_test_inputs(args.concept_id, test_rows)
     if not items:
