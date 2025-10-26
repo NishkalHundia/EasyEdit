@@ -20,7 +20,7 @@ from typing import List, Dict
 from omegaconf import OmegaConf
 
 from steer.vector_generators.vector_generators import BaseVectorGenerator
-from steer.vector_appliers.vector_appliers import BaseVectorApplier
+from steer.vector_appliers.vector_applier import BaseVectorApplier
 
 
 def load_examples_from_file(filepath: str) -> List[Dict[str, str]]:
@@ -150,9 +150,7 @@ def apply_caa_vectors(
     
     if test_prompts is None:
         test_prompts = [
-            "Tell me something interesting.",
-            "What should I know?",
-            "Give me an example."
+            "Who is U2"
         ]
     
     print(f"\n{'='*60}")
@@ -162,46 +160,53 @@ def apply_caa_vectors(
     print(f"Test prompts: {len(test_prompts)}")
     print('='*60 + "\n")
     
-    # Configure vector application
-    apply_config = {
-        "alg_name": "caa",
+    # Prepare dataset for generation
+    test_dataset = [{"input": p} for p in test_prompts]
+    results_dir = os.path.join(vector_path, "results")
+    
+    # Baseline generation (no vectors applied)
+    print("\n[Baseline (no steering)]")
+    baseline_cfg = OmegaConf.create({
         "model_name_or_path": model,
         "device": device,
         "torch_dtype": "bfloat16",
         "use_chat_template": False,
         "system_prompt": "",
-        "layers": layers,
-        "multipliers": multipliers,
-        "steer_vector_dirs": [vector_path],
-        "steer_apply_hparam_paths": ["hparams/Steer/caa_hparams/apply_caa.yaml"],
-    }
+        "generation_output_dir": results_dir,
+        "generation_data_size": None,
+        "num_responses": 1,
+        "generation_params": {"max_new_tokens": 128, "do_sample": True, "temperature": 0.7, "top_p": 0.9},
+    })
+    baseline_applier = BaseVectorApplier(baseline_cfg)
+    baseline_results = baseline_applier.generate({"test": test_dataset}, save_results=False)
+    for i, res in enumerate(baseline_results):
+        print(f"\nPrompt {i+1}: {res['input']}")
+        print(f"Baseline: {res['pred'][0] if res['pred'] else ''}")
     
-    # Apply vectors
-    apply_cfg = OmegaConf.create(apply_config)
-    vector_applier = BaseVectorApplier(apply_cfg)
-    
-    # Test each prompt with each multiplier
-    for prompt in test_prompts:
-        print(f"\n{'─'*60}")
-        print(f"Prompt: {prompt}")
-        print(f"{'─'*60}")
-        
-        # Baseline (no steering)
-        print(f"\n[Baseline (multiplier=0)]")
-        baseline_result = vector_applier.apply_vectors(
-            prompts=[prompt],
-            multiplier=0.0
-        )
-        print(baseline_result[0])
-        
-        # With steering
-        for mult in multipliers:
-            print(f"\n[With CAA (multiplier={mult})]")
-            steered_result = vector_applier.apply_vectors(
-                prompts=[prompt],
-                multiplier=mult
-            )
-            print(steered_result[0])
+    # Steered generations for each multiplier
+    for mult in multipliers:
+        print(f"\n[With CAA (multiplier={mult})]")
+        apply_cfg = OmegaConf.create({
+            "apply_steer_hparam_paths": ["hparams/Steer/caa_hparams/apply_caa.yaml"],
+            "steer_vector_load_dir": [vector_path],
+            "model_name_or_path": model,
+            "device": device,
+            "torch_dtype": "bfloat16",
+            "use_chat_template": False,
+            "system_prompt": "",
+            "layers": layers,
+            "multipliers": [mult],
+            "generation_output_dir": results_dir,
+            "generation_data_size": None,
+            "num_responses": 1,
+            "generation_params": {"max_new_tokens": 128, "do_sample": True, "temperature": 0.7, "top_p": 0.9},
+        })
+        applier = BaseVectorApplier(apply_cfg)
+        applier.apply_vectors()
+        steered_results = applier.generate({"test": test_dataset}, save_results=False)
+        for i, res in enumerate(steered_results):
+            print(f"\nPrompt {i+1}: {res['input']}")
+            print(f"CAA x{mult}: {res['pred'][0] if res['pred'] else ''}")
 
 
 def main():
@@ -225,7 +230,7 @@ Examples:
     )
     
     # Input options
-    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group = parser.add_mutually_exclusive_group(required=False)
     input_group.add_argument(
         "--examples",
         type=str,
@@ -299,6 +304,16 @@ Examples:
     )
     
     args = parser.parse_args()
+    
+    # Default behavior: if no input mode provided, try default examples file
+    if not (args.examples or args.inline or args.apply_only):
+        default_examples = os.path.join(os.path.dirname(__file__), "example_caa_data.json")
+        if os.path.exists(default_examples):
+            args.examples = default_examples
+            print(f"No input flags provided. Using default examples file: {default_examples}")
+        else:
+            args.inline = True
+            print("No input flags provided and no default examples found. Entering interactive mode.")
     
     # Validate arguments
     if args.apply_only and not args.vector_path:
