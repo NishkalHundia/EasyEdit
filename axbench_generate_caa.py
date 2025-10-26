@@ -11,15 +11,10 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def load_axbench_concept(concept_id, limit=None, seed=0):
     """Load axbench-concept500 dataset and create contrastive pairs for a specific concept."""
-    print(f"Loading axbench-concept500 dataset from HuggingFace...")
+    print(f"Loading axbench-concept500 train split from HuggingFace...")
     
-    # Load train split with explicit download mode
-    try:
-        dataset = load_dataset("pyvene/axbench-concept500", split="train", trust_remote_code=True)
-    except Exception as e:
-        print(f"Error loading dataset: {e}")
-        print("Trying alternative loading method...")
-        dataset = load_dataset("pyvene/axbench-concept500", split="train", download_mode="force_redownload", trust_remote_code=True)
+    # Load only the train split
+    dataset = load_dataset("pyvene/axbench-concept500", split="train")
     
     # Find positive examples for this concept_id
     positive_examples = []
