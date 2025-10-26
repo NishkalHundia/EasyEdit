@@ -31,38 +31,47 @@ def build_contrastive_pairs(
     - negatives: rows with same genre, same input text, category == 'negative'
     - pair each positive row to the negative row with exactly matching input
     """
-    # Load only the requested split to avoid schema mismatches on other splits
-    dsplit = load_dataset("pyvene/axbench-concept500", split=split)
+    # Stream only the requested split to avoid preparing other splits
+    stream = load_dataset("pyvene/axbench-concept500", split=split, streaming=True, verification_mode="no_checks")
 
-    # Filter positives for concept_id
-    pos_rows = [r for r in dsplit if r.get("concept_id") == concept_id and r.get("category") == "positive"]
-    if not pos_rows:
+    # First pass: gather positives and determine genre
+    pos_by_input = {}
+    genre = None
+    for row in stream:
+        if row.get("concept_id") == concept_id and row.get("category") == "positive":
+            if genre is None:
+                genre = row.get("concept_genre")
+            inp = row.get("input", "")
+            if inp and inp not in pos_by_input:
+                pos_by_input[inp] = row.get("output", "")
+                if limit and len(pos_by_input) >= limit:
+                    break
+
+    if not pos_by_input:
         raise ValueError(f"No positive rows found for concept_id={concept_id} in split='{split}'")
 
-    # Determine genre from positives
-    genre = pos_rows[0].get("concept_genre")
-    # Index negatives by input for same genre
+    # Second pass: gather negatives for those inputs with same genre
+    stream2 = load_dataset("pyvene/axbench-concept500", split=split, streaming=True, verification_mode="no_checks")
     neg_by_input = {}
-    for r in dsplit:
-        if r.get("concept_genre") == genre and r.get("category") == "negative":
-            key = r.get("input", "")
-            # prefer exact single mapping; if multiple, keep first
-            if key and key not in neg_by_input:
-                neg_by_input[key] = r
+    for row in stream2:
+        if row.get("concept_genre") == genre and row.get("category") == "negative":
+            inp = row.get("input", "")
+            if inp and inp in pos_by_input and inp not in neg_by_input:
+                neg_by_input[inp] = row.get("output", "")
 
+    # Build pairs in insertion order up to limit
     pairs: List[Dict[str, str]] = []
-    for r in pos_rows:
-        inp = r.get("input", "")
-        if not inp:
-            continue
-        neg = neg_by_input.get(inp)
-        if not neg:
+    for inp, pos_out in pos_by_input.items():
+        neg_out = neg_by_input.get(inp)
+        if not neg_out:
             continue
         pairs.append({
             "question": inp,
-            "matching": r.get("output", ""),
-            "not_matching": neg.get("output", ""),
+            "matching": pos_out,
+            "not_matching": neg_out,
         })
+        if limit and len(pairs) >= limit:
+            break
 
     if not pairs:
         raise ValueError(f"No contrastive pairs found for concept_id={concept_id} (genre={genre})")
