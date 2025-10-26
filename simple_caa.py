@@ -178,6 +178,8 @@ def apply_caa_vectors(
         "generation_params": {"max_new_tokens": 128, "do_sample": True, "temperature": 0.7, "top_p": 0.9},
     })
     baseline_applier = BaseVectorApplier(baseline_cfg)
+    # Ensure model is loaded for baseline path
+    baseline_applier.apply_vectors()
     baseline_results = baseline_applier.generate({"test": test_dataset}, save_results=False)
     for i, res in enumerate(baseline_results):
         print(f"\nPrompt {i+1}: {res['input']}")
