@@ -6,7 +6,7 @@ import os
 import random
 from omegaconf import OmegaConf
 from steer.vector_generators.vector_generators import BaseVectorGenerator
-import pandas as pd
+from datasets import load_dataset, Features, Value
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -14,13 +14,22 @@ def load_concept_data(concept_id, limit=None, seed=0):
     """Load axbench-concept500 dataset and create contrastive pairs for a concept."""
     print(f"Loading axbench-concept500 dataset for concept_id={concept_id}...")
     
-    # Load train split from parquet directly to avoid schema issues
-    train_url = "https://huggingface.co/datasets/pyvene/axbench-concept500/resolve/main/data/train-*.parquet"
-    print("Loading train split from parquet files...")
-    df = pd.read_parquet(train_url)
+    # Define features to include all columns (train + test)
+    features = Features({
+        'input': Value('string'),
+        'output': Value('string'),
+        'output_concept': Value('string'),
+        'concept_genre': Value('string'),
+        'category': Value('string'),
+        'dataset_category': Value('string'),
+        'concept_id': Value('int64'),
+        'sae_link': Value('string'),
+        'sae_id': Value('int64'),
+    })
     
-    # Convert to list of dicts
-    dataset = df.to_dict('records')
+    # Load with explicit features to avoid schema mismatch
+    dataset = load_dataset("pyvene/axbench-concept500", split="train", features=features)
+    dataset = list(dataset)
     
     # Find positive examples for this concept
     positive_examples = [ex for ex in dataset if ex['concept_id'] == concept_id and ex['category'] == 'positive']
