@@ -97,8 +97,8 @@ def main():
         train_rows = [dict(r) for r in ds_train]
     else:
         print("Downloading train split...")
-        # Direct download
-        train_url = "https://huggingface.co/datasets/pyvene/axbench-concept500/resolve/main/train-00000-of-00001.parquet"
+        # Direct download from HF structure: /9b/l20/train/data.parquet
+        train_url = "https://huggingface.co/datasets/pyvene/axbench-concept500/resolve/main/9b/l20/train/data.parquet"
         tmp_path = tempfile.mktemp(suffix=".parquet")
         subprocess.run(["wget", "-q", "-O", tmp_path, train_url], check=True)
         train_rows = pd.read_parquet(tmp_path).to_dict('records')

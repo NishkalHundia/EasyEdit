@@ -59,7 +59,7 @@ def main():
         test_rows = [dict(r) for r in ds_test]
     else:
         print("Downloading test split...")
-        test_url = "https://huggingface.co/datasets/pyvene/axbench-concept500/resolve/main/test-00000-of-00001.parquet"
+        test_url = "https://huggingface.co/datasets/pyvene/axbench-concept500/resolve/main/9b/l20/test/data.parquet"
         tmp_path = tempfile.mktemp(suffix=".parquet")
         subprocess.run(["wget", "-q", "-O", tmp_path, test_url], check=True)
         test_rows = pd.read_parquet(tmp_path).to_dict('records')
