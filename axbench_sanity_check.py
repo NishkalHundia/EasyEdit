@@ -13,8 +13,13 @@ def load_training_prompts(concept_id, num_examples=5, seed=0):
     """Load training prompts used to create the steering vectors."""
     print(f"Loading training prompts for concept_id {concept_id}...")
     
-    # Load train split
-    dataset = load_dataset("pyvene/axbench-concept500", split="train")
+    # Load train split with explicit download mode
+    try:
+        dataset = load_dataset("pyvene/axbench-concept500", split="train", trust_remote_code=True)
+    except Exception as e:
+        print(f"Error loading dataset: {e}")
+        print("Trying alternative loading method...")
+        dataset = load_dataset("pyvene/axbench-concept500", split="train", download_mode="force_redownload", trust_remote_code=True)
     
     # Find positive examples for this concept_id
     positive_examples = []
