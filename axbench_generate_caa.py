@@ -82,7 +82,8 @@ def main():
     args = parser.parse_args()
 
     print("Loading Concept500 (train) ...")
-    ds_train = load_dataset("pyvene/axbench-concept500", split="train", verification_mode="no_checks")
+    # Load only train split - use ignore_verifications to skip schema checking
+    ds_train = load_dataset("pyvene/axbench-concept500", split="train", ignore_verifications=True)
     train_rows = [dict(r) for r in ds_train]
 
     pairs = _build_contrastive_pairs(
