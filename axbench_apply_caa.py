@@ -5,7 +5,8 @@ import json
 import os
 from omegaconf import OmegaConf
 from steer.vector_appliers.vector_applier import BaseVectorApplier
-from datasets import load_dataset
+from huggingface_hub import hf_hub_download
+import pyarrow.parquet as pq
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -13,9 +14,27 @@ def load_test_data(concept_id):
     """Load test data for a specific concept from axbench-concept500."""
     print(f"Loading test data for concept_id={concept_id}...")
     
-    # Load test split - use download_mode to force fresh download and avoid cache issues  
-    dataset = load_dataset("pyvene/axbench-concept500", split="test", download_mode="force_redownload")
-    dataset = list(dataset)
+    # Download test parquet files directly - bypass datasets library completely
+    print("Downloading test parquet files...")
+    test_files = []
+    for i in range(8):  # test has 8 parquet files (test-00000 to test-00007)
+        filename = f"data/test-0000{i}-of-00008.parquet"
+        try:
+            filepath = hf_hub_download(repo_id="pyvene/axbench-concept500", filename=filename, repo_type="dataset")
+            test_files.append(filepath)
+        except Exception as e:
+            print(f"Could not download {filename}: {e}")
+            break
+    
+    # Read all parquet files and concatenate
+    print(f"Reading {len(test_files)} parquet files...")
+    tables = [pq.read_table(f) for f in test_files]
+    combined_table = tables[0]
+    for table in tables[1:]:
+        combined_table = pq.concat_tables([combined_table, table])
+    
+    # Convert to list of dicts
+    dataset = combined_table.to_pylist()
     
     # Find all examples for this concept (positive ones)
     test_examples = [
