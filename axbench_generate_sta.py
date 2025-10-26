@@ -6,8 +6,7 @@ import os
 import random
 from omegaconf import OmegaConf
 from steer.vector_generators.vector_generators import BaseVectorGenerator
-from huggingface_hub import hf_hub_download
-import pyarrow.parquet as pq
+import pandas as pd
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -15,27 +14,13 @@ def load_concept_data(concept_id, limit=None, seed=0):
     """Load axbench-concept500 dataset and create contrastive pairs for a concept."""
     print(f"Loading axbench-concept500 dataset for concept_id={concept_id}...")
     
-    # Download train parquet files directly - bypass datasets library completely
-    print("Downloading train parquet files...")
-    train_files = []
-    for i in range(8):  # train has 8 parquet files (train-00000 to train-00007)
-        filename = f"data/train-0000{i}-of-00008.parquet"
-        try:
-            filepath = hf_hub_download(repo_id="pyvene/axbench-concept500", filename=filename, repo_type="dataset")
-            train_files.append(filepath)
-        except Exception as e:
-            print(f"Could not download {filename}: {e}")
-            break
-    
-    # Read all parquet files and concatenate
-    print(f"Reading {len(train_files)} parquet files...")
-    tables = [pq.read_table(f) for f in train_files]
-    combined_table = tables[0]
-    for table in tables[1:]:
-        combined_table = pq.concat_tables([combined_table, table])
+    # Load entire train dataset from HF parquet files
+    print("Downloading full train dataset...")
+    train_url = "hf://datasets/pyvene/axbench-concept500/data/train-*.parquet"
+    df = pd.read_parquet(train_url)
     
     # Convert to list of dicts
-    dataset = combined_table.to_pylist()
+    dataset = df.to_dict('records')
     
     # Find positive examples for this concept
     positive_examples = [ex for ex in dataset if ex['concept_id'] == concept_id and ex['category'] == 'positive']
