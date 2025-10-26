@@ -142,10 +142,14 @@ def main():
         mult_output_dir = f"{base_output_dir}_mult{mult_str}"
         apply_config['generation_output_dir'] = mult_output_dir
         
+        # Make multiplier/trim/mode visible in printed hyperparams
+        apply_config['multipliers'] = [mult for _ in args.layers]
+        apply_config['trims'] = [args.trim for _ in args.layers]
+        apply_config['mode'] = args.mode
         apply_cfg = OmegaConf.create(apply_config)
         applier = BaseVectorApplier(apply_cfg)
         
-        # Set mode/trim for applier hyperparams
+        # Ensure runtime hparams match
         applier.hparams_dict["sta"].mode = args.mode
         applier.hparams_dict["sta"].trims = [args.trim for _ in args.layers]
         applier.hparams_dict["sta"].multipliers = [mult for _ in args.layers]
