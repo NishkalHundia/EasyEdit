@@ -43,6 +43,7 @@ def main():
     parser.add_argument("--layers", nargs="+", type=int, default=[20])
     parser.add_argument("--multipliers", nargs="+", type=float, default=[1.0])
     parser.add_argument("--max_new_tokens", type=int, default=64)
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of test prompts to process")
     args = parser.parse_args()
 
     print("Loading Concept500 (test) ...")
@@ -67,6 +68,11 @@ def main():
     items = _build_test_inputs(args.concept_id, test_rows)
     if not items:
         raise RuntimeError("No test items found for given concept_id")
+    
+    # Apply limit if specified
+    if args.limit and args.limit > 0:
+        items = items[:args.limit]
+        print(f"Limited to {len(items)} test prompts")
 
     model_tag = args.model.split("/")[-1]
     dataset_label = f"concept_{args.concept_id}"
