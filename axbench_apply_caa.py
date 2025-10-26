@@ -13,9 +13,16 @@ def load_test_data(concept_id):
     """Load test data for a specific concept from axbench-concept500."""
     print(f"Loading test data for concept_id={concept_id}...")
     
-    # Load entire dataset first to avoid schema mismatch issues between splits
-    full_dataset = load_dataset("pyvene/axbench-concept500")
-    dataset = full_dataset["test"]
+    # Load test split directly (use streaming to avoid schema mismatch issues)
+    try:
+        dataset = load_dataset("pyvene/axbench-concept500", split="test", streaming=True)
+        # Convert streaming dataset to list
+        dataset = list(dataset)
+    except Exception as e:
+        print(f"Streaming failed, trying direct load: {e}")
+        # Try direct load
+        dataset = load_dataset("pyvene/axbench-concept500", split="test")
+        dataset = list(dataset)
     
     # Find all examples for this concept (positive ones)
     test_examples = [
