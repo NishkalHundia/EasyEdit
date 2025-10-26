@@ -81,6 +81,8 @@ def _build_contrastive_pairs(
         rng = random.Random(seed)
         pairs = rng.sample(pairs, k=limit)
 
+    print(pairs)  # Debug: show first 2 pairs
+
     return pairs
 
 
