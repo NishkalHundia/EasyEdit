@@ -104,20 +104,31 @@ def main():
     }
 
     print(f"Testing with multipliers: {args.multipliers}")
-    apply_cfg = OmegaConf.create(apply_config)
-    applier = BaseVectorApplier(apply_cfg)
-
-    # Set mode/trim for applier hyperparams
-    applier.hparams_dict["sta"].mode = args.mode
-    applier.hparams_dict["sta"].trims = [args.trim for _ in args.layers]
-
+    
     for mult in args.multipliers:
+        print(f"\n{'='*60}")
+        print(f"Processing multiplier: {mult}")
+        print('='*60)
+        
+        # Create unique output directory for each multiplier
+        mult_output_dir = f"{apply_config['generation_output_dir']}_mult{mult}"
+        apply_config['generation_output_dir'] = mult_output_dir
+        
+        apply_cfg = OmegaConf.create(apply_config)
+        applier = BaseVectorApplier(apply_cfg)
+        
+        # Set mode/trim for applier hyperparams
+        applier.hparams_dict["sta"].mode = args.mode
+        applier.hparams_dict["sta"].trims = [args.trim for _ in args.layers]
         applier.hparams_dict["sta"].multipliers = [mult for _ in args.layers]
+        
         applier.apply_vectors()
         applier.generate({"test": items})
         applier.model.reset_all()
+        
+        print(f"Results saved to {mult_output_dir}")
 
-    print(f"\nDone. Results saved to {apply_config['generation_output_dir']}")
+    print(f"\nDone. All results saved with multiplier suffixes.")
 
 
 if __name__ == "__main__":
