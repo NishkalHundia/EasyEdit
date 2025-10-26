@@ -13,8 +13,10 @@ def load_axbench_concept(concept_id, limit=None, seed=0):
     """Load axbench-concept500 dataset and create contrastive pairs for a specific concept."""
     print(f"Loading axbench-concept500 train split from HuggingFace...")
     
-    # Load only the train split
-    dataset = load_dataset("pyvene/axbench-concept500", split="train")
+    # Load only the train split, ignore verification to avoid schema mismatch issues
+    dataset = load_dataset("pyvene/axbench-concept500", split="train", 
+                          download_mode="force_redownload", 
+                          ignore_verifications=True)
     
     # Find positive examples for this concept_id
     positive_examples = []

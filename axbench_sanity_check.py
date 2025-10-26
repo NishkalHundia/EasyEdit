@@ -13,8 +13,9 @@ def load_training_prompts(concept_id, num_examples=5, seed=0):
     """Load training prompts used to create the steering vectors."""
     print(f"Loading axbench-concept500 train split from HuggingFace...")
     
-    # Load only the train split
-    dataset = load_dataset("pyvene/axbench-concept500", split="train")
+    # Load only the train split, ignore verification to avoid schema mismatch issues
+    dataset = load_dataset("pyvene/axbench-concept500", split="train", 
+                          ignore_verifications=True)
     
     # Find positive examples for this concept_id
     positive_examples = []
