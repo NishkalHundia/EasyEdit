@@ -1,52 +1,62 @@
+#!/usr/bin/env python3
+"""Apply CAA vectors trained on AxBench Concept500 to test prompts.
+
+Loads test split for the specified concept_id and runs generation while
+applying CAA vectors. Supports multiple multipliers.
+"""
+
 import os
-from typing import List, Dict
+from typing import Dict, List
+
 from datasets import load_dataset
 from omegaconf import OmegaConf
+
 from steer.vector_appliers.vector_applier import BaseVectorApplier
 
 
-def build_test_inputs(concept_id: int) -> List[Dict[str, str]]:
-    # Stream only the test split. Collect all positives for this concept_id.
-    test_stream = load_dataset(
-        "pyvene/axbench-concept500",
-        split="test",
-        streaming=True,
-        verification_mode="no_checks",
-    )
-
+def _build_test_inputs(concept_id: int, test_rows: List[Dict]) -> List[Dict[str, str]]:
     items: List[Dict[str, str]] = []
-    for r in test_stream:
-        if r.get("concept_id") != concept_id:
+    for row in test_rows:
+        try:
+            cid = int(row.get("concept_id", -1))
+        except Exception:
+            cid = -1
+        if cid != concept_id:
             continue
-        if r.get("category") != "positive":
-            continue
-        inp = r.get("input", "")
+        inp = row.get("input", "")
         if not inp:
             continue
-        expected = r.get("output", "")
-        items.append({"input": inp, "reference_response": expected})
+        items.append({
+            "input": inp,
+            "reference_response": row.get("output", ""),
+        })
     return items
 
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--concept_id", type=int, required=True)
     parser.add_argument("--model", default="google/gemma-2-9b-it")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--layers", nargs="+", type=int, default=[20])
     parser.add_argument("--multipliers", nargs="+", type=float, default=[1.0])
-    parser.add_argument("--max_new_tokens", type=int, default=50)
+    parser.add_argument("--max_new_tokens", type=int, default=64)
     args = parser.parse_args()
 
-    model_tag = args.model.split("/")[-1]
-    vector_dir = f"vectors/axbench/{model_tag}/concept_{args.concept_id}/caa_vector"
+    print("Loading Concept500 (test) ...")
+    ds_test = load_dataset("pyvene/axbench-concept500", split="test")
+    test_rows = [dict(r) for r in ds_test]
+    items = _build_test_inputs(args.concept_id, test_rows)
+    if not items:
+        raise RuntimeError("No test items found for given concept_id")
 
+    model_tag = args.model.split("/")[-1]
+    dataset_label = f"concept_{args.concept_id}"
+    vector_dir = f"vectors/axbench/{model_tag}/{dataset_label}/caa_vector"
     if not os.path.exists(vector_dir):
-        print(f"Error: Vectors not found at {vector_dir}")
-        print("Generate them first with:")
-        print(f"python axbench_generate_caa.py --concept_id {args.concept_id} --model {args.model} --layers {' '.join(map(str, args.layers))}")
-        return
+        raise FileNotFoundError(f"Vectors not found at {vector_dir}. Generate first.")
 
     apply_config = {
         "alg_name": "caa",
@@ -59,7 +69,7 @@ def main():
         "steer_vector_load_dir": [vector_dir],
         "generation_data": ["test"],
         "generation_data_size": None,
-        "generation_output_dir": f"generation/axbench/{model_tag}/concept_{args.concept_id}/caa",
+        "generation_output_dir": f"generation/axbench/{model_tag}/{dataset_label}/caa",
         "steer_from_end_position": True,
         "generate_orig_output": True,
         "generation_params": {
@@ -71,21 +81,18 @@ def main():
 
     print(f"Testing with multipliers: {args.multipliers}")
     apply_cfg = OmegaConf.create(apply_config)
-    vector_applier = BaseVectorApplier(apply_cfg)
-
-    test_items = {"test": build_test_inputs(args.concept_id)}
+    applier = BaseVectorApplier(apply_cfg)
 
     for mult in args.multipliers:
-        print(f"\n{'='*60}")
-        print(f"Multiplier: {mult}")
-        print('='*60)
-        vector_applier.hparams_dict["caa"].multipliers = [mult for _ in args.layers]
-        vector_applier.apply_vectors()
-        vector_applier.generate(test_items)
-        vector_applier.model.reset_all()
+        applier.hparams_dict["caa"].multipliers = [mult for _ in args.layers]
+        applier.apply_vectors()
+        applier.generate({"test": items})
+        applier.model.reset_all()
 
-    print(f"\nDone! Results saved to {apply_config['generation_output_dir']}")
+    print(f"\nDone. Results saved to {apply_config['generation_output_dir']}")
 
 
 if __name__ == "__main__":
     main()
+
+

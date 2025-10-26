@@ -1,68 +1,59 @@
 #!/usr/bin/env python3
-"""Generate CAA vectors from AxBench Concept500 dataset.
+"""Generate CAA vectors from AxBench Concept500 using contrastive pairs.
 
-This mirrors the dialz CAA generator but builds contrastive pairs from
-`pyvene/axbench-concept500` by:
-- selecting positive rows for a given concept_id from the train split
-- determining the concept's genre
-- collecting negative rows of the same genre with identical input prompts
-  whose outputs are negative (no concept) to form (prompt, matching, not_matching) pairs
+This mirrors the dialz CAA generation flow but builds pairs from
+pyvene/axbench-concept500 train split by concept_id and genre, pairing
+positives with exact-input-matched negatives.
 """
 
 import os
 import random
-from typing import List, Dict
+from typing import Dict, List, Tuple
+
 from datasets import load_dataset
 from omegaconf import OmegaConf
+
 from steer.vector_generators.vector_generators import BaseVectorGenerator
 
 
-def build_contrastive_pairs(
+def _build_contrastive_pairs(
     concept_id: int,
-    split: str = "train",
-    seed: int = 0,
+    train_rows: List[Dict],
     limit: int = None,
+    seed: int = 0,
 ) -> List[Dict[str, str]]:
-    """Create contrastive pairs from Concept500 for a specific concept_id.
+    """Construct contrastive pairs for a concept.
 
-    Rules:
-    - positives: rows with given concept_id and category == 'positive' in the given split
-    - genre: inferred from positive rows' `concept_genre`
-    - negatives: rows with same genre, same input text, category == 'negative'
-    - pair each positive row to the negative row with exactly matching input
+    For each positive row with the given concept_id, find a negative row
+    with the same concept_genre and the exact same input. Return a list of
+    dicts with keys: question, matching, not_matching.
     """
-    # Stream only the requested split to avoid preparing other splits
-    stream = load_dataset("pyvene/axbench-concept500", split=split, streaming=True, verification_mode="no_checks")
+    # Index negatives by (input, concept_genre)
+    neg_index: Dict[Tuple[str, str], List[Dict]] = {}
+    for row in train_rows:
+        if str(row.get("category", "")).lower() == "negative":
+            key = (row.get("input", ""), row.get("concept_genre", ""))
+            neg_index.setdefault(key, []).append(row)
 
-    # First pass: gather positives and determine genre
-    pos_by_input = {}
-    genre = None
-    for row in stream:
-        if row.get("concept_id") == concept_id and row.get("category") == "positive":
-            if genre is None:
-                genre = row.get("concept_genre")
-            inp = row.get("input", "")
-            if inp and inp not in pos_by_input:
-                pos_by_input[inp] = row.get("output", "")
-                if limit and len(pos_by_input) >= limit:
-                    break
-
-    if not pos_by_input:
-        raise ValueError(f"No positive rows found for concept_id={concept_id} in split='{split}'")
-
-    # Second pass: gather negatives for those inputs with same genre
-    stream2 = load_dataset("pyvene/axbench-concept500", split=split, streaming=True, verification_mode="no_checks")
-    neg_by_input = {}
-    for row in stream2:
-        if row.get("concept_genre") == genre and row.get("category") == "negative":
-            inp = row.get("input", "")
-            if inp and inp in pos_by_input and inp not in neg_by_input:
-                neg_by_input[inp] = row.get("output", "")
-
-    # Build pairs in insertion order up to limit
     pairs: List[Dict[str, str]] = []
-    for inp, pos_out in pos_by_input.items():
-        neg_out = neg_by_input.get(inp)
+    for row in train_rows:
+        try:
+            cid = int(row.get("concept_id", -1))
+        except Exception:
+            cid = -1
+        if cid != concept_id:
+            continue
+        if str(row.get("category", "")).lower() != "positive":
+            continue
+        inp = row.get("input", "")
+        genre = row.get("concept_genre", "")
+        pos_out = row.get("output", "")
+        if not inp:
+            continue
+        negs = neg_index.get((inp, genre), [])
+        if not negs:
+            continue
+        neg_out = negs[0].get("output", "")
         if not neg_out:
             continue
         pairs.append({
@@ -70,11 +61,6 @@ def build_contrastive_pairs(
             "matching": pos_out,
             "not_matching": neg_out,
         })
-        if limit and len(pairs) >= limit:
-            break
-
-    if not pairs:
-        raise ValueError(f"No contrastive pairs found for concept_id={concept_id} (genre={genre})")
 
     if limit and len(pairs) > limit:
         rng = random.Random(seed)
@@ -85,24 +71,34 @@ def build_contrastive_pairs(
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--concept_id", type=int, required=True)
-    parser.add_argument("--model", default="google/gemma-2-9b-it")
+    parser.add_argument("--concept_id", type=int, required=True, help="Concept ID to train on")
+    parser.add_argument("--model", default="google/gemma-2-9b-it", help="HF model id/path")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--layers", nargs="+", type=int, default=[20])
-    parser.add_argument("--train_limit", type=int, default=300)
+    parser.add_argument("--train_limit", type=int, default=720, help="Max training pairs; 0 means all")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--split", default="train")
     args = parser.parse_args()
 
-    # Load training data (contrastive pairs)
-    print(f"Building contrastive pairs from Concept500 for concept_id={args.concept_id} split={args.split} ...")
-    train_data = build_contrastive_pairs(args.concept_id, split=args.split, seed=args.seed, limit=args.train_limit)
-    print(f"Built {len(train_data)} training pairs")
+    print("Loading Concept500 (train) ...")
+    ds_train = load_dataset("pyvene/axbench-concept500", split="train")
+    train_rows = [dict(r) for r in ds_train]
 
-    # Config for vector generation
+    pairs = _build_contrastive_pairs(
+        concept_id=args.concept_id,
+        train_rows=train_rows,
+        limit=(None if args.train_limit in (None, 0) else args.train_limit),
+        seed=args.seed,
+    )
+    print(f"Built {len(pairs)} contrastive pairs for concept_id={args.concept_id}")
+    if not pairs:
+        raise RuntimeError("No contrastive pairs found. Check concept_id or dataset filters.")
+
+    # Configure vector generation
     model_tag = args.model.split("/")[-1]
-    vector_base_dir = f"vectors/axbench/{model_tag}/concept_{args.concept_id}"
+    dataset_label = f"concept_{args.concept_id}"
+    vector_base_dir = f"vectors/axbench/{model_tag}"
     gen_config = {
         "alg_name": "caa",
         "model_name_or_path": args.model,
@@ -114,19 +110,20 @@ def main():
         "save_vectors": True,
         "steer_vector_output_dirs": [vector_base_dir],
         "steer_train_hparam_paths": ["hparams/Steer/caa_hparams/generate_caa.yaml"],
-        "steer_train_dataset": [""],
+        "steer_train_dataset": [dataset_label],
     }
 
-    # Generate vectors
-    print("Generating CAA vectors...")
+    print("Generating CAA vectors ...")
     gen_cfg = OmegaConf.create(gen_config)
     vector_generator = BaseVectorGenerator(gen_cfg)
-    # Use empty dataset key to avoid extra directory nesting in output path
-    vector_generator.generate_vectors({"": train_data})
-    print(f"\nVectors saved under {vector_base_dir}/caa_vector")
-    print("\nTo apply these vectors, run:")
+    vector_generator.generate_vectors({dataset_label: pairs})
+
+    out_dir = os.path.join(vector_base_dir, dataset_label, "caa_vector")
+    print(f"\nVectors saved to {out_dir}")
+    layers_str = " ".join(map(str, args.layers))
+    print("\nTo apply these vectors:")
     print(
-        f"python axbench_apply_caa.py --concept_id {args.concept_id} --model {args.model} --layers {' '.join(map(str, args.layers))} --multipliers 1.0 2.0"
+        f"python EasyEdit/axbench_apply_caa.py --concept_id {args.concept_id} --model {args.model} --layers {layers_str} --multipliers 0.5 1.0 2.0"
     )
 
 
