@@ -114,14 +114,15 @@ def main():
         "save_vectors": True,
         "steer_vector_output_dirs": [vector_base_dir],
         "steer_train_hparam_paths": ["hparams/Steer/caa_hparams/generate_caa.yaml"],
-        "steer_train_dataset": [f"axbench_concept_{args.concept_id}"],
+        "steer_train_dataset": [""],
     }
 
     # Generate vectors
     print("Generating CAA vectors...")
     gen_cfg = OmegaConf.create(gen_config)
     vector_generator = BaseVectorGenerator(gen_cfg)
-    vector_generator.generate_vectors({f"axbench_concept_{args.concept_id}": train_data})
+    # Use empty dataset key to avoid extra directory nesting in output path
+    vector_generator.generate_vectors({"": train_data})
     print(f"\nVectors saved under {vector_base_dir}/caa_vector")
     print("\nTo apply these vectors, run:")
     print(

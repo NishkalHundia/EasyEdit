@@ -117,13 +117,13 @@ def main():
         "save_vectors": True,
         "steer_vector_output_dirs": [vector_base_dir],
         "steer_train_hparam_paths": ["hparams/Steer/sta_hparams/generate_sta.yaml"],
-        "steer_train_dataset": [f"axbench_concept_{args.concept_id}"],
+        "steer_train_dataset": [""],
     }
 
     print("Generating STA vectors...")
     gen_cfg = OmegaConf.create(gen_config)
     vector_generator = BaseVectorGenerator(gen_cfg)
-    vector_generator.generate_vectors({f"axbench_concept_{args.concept_id}": train_data})
+    vector_generator.generate_vectors({"": train_data})
     print(f"\nVectors saved under {vector_base_dir}/sta_vector")
     print("\nTo apply these vectors, run:")
     print(
