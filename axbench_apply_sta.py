@@ -129,13 +129,17 @@ def main():
 
     print(f"Testing with multipliers: {args.multipliers}")
     
+    # Anchor base output dir to avoid cascading suffixes
+    base_output_dir = apply_config['generation_output_dir']
+    
     for mult in args.multipliers:
         print(f"\n{'='*60}")
         print(f"Processing multiplier: {mult}")
         print('='*60)
         
         # Create unique output directory for each multiplier
-        mult_output_dir = f"{apply_config['generation_output_dir']}_mult{mult}"
+        mult_str = str(mult).replace('.', 'p').replace('-', 'm')
+        mult_output_dir = f"{base_output_dir}_mult{mult_str}"
         apply_config['generation_output_dir'] = mult_output_dir
         
         apply_cfg = OmegaConf.create(apply_config)
