@@ -38,8 +38,8 @@ def main():
     parser.add_argument("--concept_id", type=int, required=True)
     parser.add_argument("--model", default="google/gemma-2-9b-it")
     parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--layers", nargs="", type=int, default=[20])
-    parser.add_argument("--multipliers", nargs="", type=float, default=[1.0])
+    parser.add_argument("--layers", nargs="+", type=int, default=[20])
+    parser.add_argument("--multipliers", nargs="+", type=float, default=[1.0])
     parser.add_argument("--max_new_tokens", type=int, default=50)
     args = parser.parse_args()
 
