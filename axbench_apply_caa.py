@@ -6,12 +6,28 @@ applying CAA vectors. Supports multiple multipliers.
 """
 
 import os
+import json
 from typing import Dict, List
 
 import pandas as pd
 from omegaconf import OmegaConf
 
 from steer.vector_appliers.vector_applier import BaseVectorApplier
+
+
+def _get_concept_info(concept_id: int, test_rows: List[Dict]) -> Dict[str, str]:
+    """Get concept information for a given concept_id."""
+    for row in test_rows:
+        try:
+            cid = int(row.get("concept_id", -1))
+        except Exception:
+            cid = -1
+        if cid == concept_id and str(row.get("category", "")).lower() == "positive":
+            return {
+                "concept": row.get("output_concept", "UNKNOWN"),
+                "genre": row.get("concept_genre", "UNKNOWN"),
+            }
+    return {"concept": "UNKNOWN", "genre": "UNKNOWN"}
 
 
 def _build_test_inputs(concept_id: int, test_rows: List[Dict]) -> List[Dict[str, str]]:
@@ -65,6 +81,14 @@ def main():
         subprocess.run(["wget", "-q", "-O", tmp_path, test_url], check=True)
         test_rows = pd.read_parquet(tmp_path).to_dict('records')
         os.unlink(tmp_path)
+    # Get concept info
+    concept_info = _get_concept_info(args.concept_id, test_rows)
+    print(f"\n{'='*60}")
+    print(f"Concept ID: {args.concept_id}")
+    print(f"Concept: {concept_info['concept']}")
+    print(f"Genre: {concept_info['genre']}")
+    print('='*60)
+    
     items = _build_test_inputs(args.concept_id, test_rows)
     if not items:
         raise RuntimeError("No test items found for given concept_id")
@@ -117,8 +141,29 @@ def main():
         
         applier.hparams_dict["caa"].multipliers = [mult for _ in args.layers]
         applier.apply_vectors()
-        applier.generate({"test": items})
+        # Generate without saving, then save simplified outputs
+        formatted_results = applier.generate({"test": items}, save_results=False)
         applier.model.reset_all()
+
+        simple_results = []
+        for r in formatted_results:
+            steered = r.get("pred", "")
+            if isinstance(steered, list) and len(steered) > 0:
+                steered = steered[0]
+            nonsteered = r.get("orig_pred", "")
+            if isinstance(nonsteered, list) and len(nonsteered) > 0:
+                nonsteered = nonsteered[0]
+            expected = r.get("reference_response", "")
+            simple_results.append({
+                "steered_output": steered,
+                "non_steered_output": nonsteered,
+                "expected_output": expected,
+            })
+
+        os.makedirs(mult_output_dir, exist_ok=True)
+        save_file_path = os.path.join(mult_output_dir, "test_results.json")
+        with open(save_file_path, 'w', encoding='utf-8') as f:
+            json.dump(simple_results, f, ensure_ascii=False, indent=4)
         
         print(f"Results saved to {mult_output_dir}")
 

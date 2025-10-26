@@ -15,6 +15,21 @@ from omegaconf import OmegaConf
 from steer.vector_generators.vector_generators import BaseVectorGenerator
 
 
+def _get_concept_info(concept_id: int, train_rows: List[Dict]) -> Dict[str, str]:
+    """Get concept information for a given concept_id."""
+    for row in train_rows:
+        try:
+            cid = int(row.get("concept_id", -1))
+        except Exception:
+            cid = -1
+        if cid == concept_id and str(row.get("category", "")).lower() == "positive":
+            return {
+                "concept": row.get("output_concept", "UNKNOWN"),
+                "genre": row.get("concept_genre", "UNKNOWN"),
+            }
+    return {"concept": "UNKNOWN", "genre": "UNKNOWN"}
+
+
 def _build_contrastive_pairs(
     concept_id: int,
     train_rows: List[Dict],
@@ -115,13 +130,21 @@ def main():
         train_rows = pd.read_parquet(tmp_path).to_dict('records')
         os.unlink(tmp_path)
 
+    # Get concept info
+    concept_info = _get_concept_info(args.concept_id, train_rows)
+    print(f"\n{'='*60}")
+    print(f"Concept ID: {args.concept_id}")
+    print(f"Concept: {concept_info['concept']}")
+    print(f"Genre: {concept_info['genre']}")
+    print('='*60)
+    
     pairs = _build_contrastive_pairs(
         concept_id=args.concept_id,
         train_rows=train_rows,
         limit=(None if args.train_limit in (None, 0) else args.train_limit),
         seed=args.seed,
     )
-    print(f"Built {len(pairs)} contrastive pairs for concept_id={args.concept_id}")
+    print(f"\nBuilt {len(pairs)} contrastive pairs for concept_id={args.concept_id}")
     if not pairs:
         raise RuntimeError("No contrastive pairs found. Check concept_id or dataset filters.")
 
